@@ -12,7 +12,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+  ? process.env.NEXT_PUBLIC_SITE_URL
+  : process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : "http://localhost:3847";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: "Lathe",
   description: "Floreros, lámparas y tachos paramétricos para imprimir en 3D",
 };
