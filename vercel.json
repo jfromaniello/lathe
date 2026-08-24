@@ -1,4 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.lathe3d.com" }],
+      "destination": "https://lathe3d.com/:path*",
+      "permanent": true
+    }
+  ]
 }
