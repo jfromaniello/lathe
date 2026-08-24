@@ -3,15 +3,22 @@
 import { useCallback, useEffect, useState } from "react";
 import type * as THREE from "three";
 import Controls from "@/components/Controls";
-import { DEFAULT_PARAMS, PRESETS, bounds, type ShapeParams } from "@/lib/shape";
+import Gallery from "@/components/Gallery";
+import PatternPicker from "@/components/PatternPicker";
+import HistoryStrip from "@/components/HistoryStrip";
+import ShareButton from "@/components/ShareButton";
+import Viewer, { COLORS, DEFAULT_VIEW, type MaterialKind, type ViewSettings } from "@/components/Viewer";
+import { DEFAULT_PARAMS, bounds, type ShapeParams } from "@/lib/shape";
 import { downloadBlob, makeSTL } from "@/lib/export";
 import { decodeParams, encodeParams } from "@/lib/url";
-import ShareButton from "@/components/ShareButton";
-import Viewer from "@/components/Viewer";
+import { useHistory } from "@/hooks/useHistory";
 
 export default function App() {
   // rendered client-only (see page.tsx), so reading the URL in the initializer is safe
-  const [params, setParams] = useState<ShapeParams>(() => decodeParams(window.location.search, DEFAULT_PARAMS));
+  const history = useHistory<ShapeParams>(() => decodeParams(window.location.search, DEFAULT_PARAMS));
+  const params = history.state;
+  const setParams = history.set;
+  const [view, setView] = useState<ViewSettings>(DEFAULT_VIEW);
   const [stats, setStats] = useState<{ tris: number; x: number; y: number; z: number } | null>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -25,6 +32,20 @@ export default function App() {
     return () => clearTimeout(t);
   }, [params]);
 
+  // keyboard: ⌘Z / ⌘⇧Z (or ctrl)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      e.preventDefault();
+      if (e.shiftKey) history.redo();
+      else history.undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [history]);
+
   const onGeometry = useCallback((g: THREE.BufferGeometry) => {
     const b = bounds(g);
     setStats({ tris: (g.index?.count ?? 0) / 3, ...b });
@@ -32,7 +53,6 @@ export default function App() {
 
   const exportSTL = () => {
     setExporting(true);
-    // let the button re-render before the (sync) mesh generation
     setTimeout(() => {
       try {
         const blob = makeSTL(params);
@@ -43,30 +63,21 @@ export default function App() {
     }, 20);
   };
 
+  const setV = <K extends keyof ViewSettings>(k: K, v: ViewSettings[K]) => setView((s) => ({ ...s, [k]: v }));
+
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-neutral-950 text-neutral-100">
-      <aside className="flex w-[340px] shrink-0 flex-col border-r border-neutral-800">
-        <div className="border-b border-neutral-800 p-4">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight">Lathe</h1>
-              <p className="text-xs text-neutral-500">Objetos paramétricos para imprimir en 3D</p>
-            </div>
-            <ShareButton params={params} />
+      <aside className="flex w-[380px] shrink-0 flex-col border-r border-neutral-800">
+        <div className="flex items-start justify-between gap-2 border-b border-neutral-800 p-4">
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">Lathe</h1>
+            <p className="text-xs text-neutral-500">Objetos paramétricos para imprimir en 3D</p>
           </div>
-          <div className="mt-3 flex flex-wrap gap-1">
-            {PRESETS.map((p) => (
-              <button
-                key={p.name}
-                className="rounded-full border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300 hover:border-amber-500 hover:text-amber-400"
-                onClick={() => setParams({ ...p.params, radialSegments: params.radialSegments, heightSegments: params.heightSegments })}
-              >
-                {p.name}
-              </button>
-            ))}
-          </div>
+          <ShareButton params={params} />
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 space-y-5 overflow-y-auto p-4">
+          <Gallery onPick={setParams} />
+          <PatternPicker params={params} onChange={setParams} />
           <Controls params={params} onChange={setParams} />
         </div>
         <div className="border-t border-neutral-800 p-4">
@@ -84,8 +95,71 @@ export default function App() {
           </button>
         </div>
       </aside>
+
       <section className="relative flex-1">
-        <Viewer params={params} onGeometry={onGeometry} />
+        <Viewer params={params} view={view} onChange={setParams} onGeometry={onGeometry} />
+
+        {/* floating view toolbar */}
+        <div className="pointer-events-none absolute right-3 top-3 flex flex-col items-end gap-2">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-black/10 bg-white/70 p-1.5 shadow-lg backdrop-blur">
+            {(
+              [
+                ["matte", "PLA mate"],
+                ["wood", "Madera"],
+                ["glass", "Translúcido"],
+              ] as [MaterialKind, string][]
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setV("material", k)}
+                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                  view.material === k ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            <div className="mx-1 h-5 w-px bg-black/10" />
+            {COLORS.map((c) => (
+              <button
+                key={c.hex}
+                onClick={() => setV("color", c.hex)}
+                title={c.name}
+                className={`h-6 w-6 rounded-full border-2 transition ${view.color === c.hex ? "border-neutral-900 scale-110" : "border-white/70 hover:scale-110"}`}
+                style={{ background: c.hex }}
+              />
+            ))}
+          </div>
+          <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-black/10 bg-white/70 p-1.5 shadow-lg backdrop-blur">
+            <button
+              onClick={() => setV("showHandles", !view.showHandles)}
+              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${view.showHandles ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"}`}
+              title="Manijas para editar directamente en 3D"
+            >
+              ✥ Manijas
+            </button>
+            <button
+              onClick={() => setV("showMug", !view.showMug)}
+              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${view.showMug ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"}`}
+              title="Una taza de 90 mm al lado, para sentir el tamaño"
+            >
+              ☕ Escala
+            </button>
+          </div>
+        </div>
+
+        {/* history */}
+        <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2">
+          <HistoryStrip
+            past={history.past}
+            current={params}
+            onJump={history.jumpTo}
+            onUndo={history.undo}
+            onRedo={history.redo}
+            canUndo={history.canUndo}
+            canRedo={history.canRedo}
+          />
+        </div>
       </section>
     </main>
   );

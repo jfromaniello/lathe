@@ -50,9 +50,9 @@ function Slider({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, open = true }: { title: string; children: React.ReactNode; open?: boolean }) {
   return (
-    <details open className="group border-t border-neutral-800 pt-3">
+    <details open={open} className="group border-t border-neutral-800 pt-3">
       <summary className="cursor-pointer text-sm font-medium text-neutral-200">{title}</summary>
       <div className="mt-3 space-y-3">{children}</div>
     </details>
@@ -66,44 +66,21 @@ export default function Controls({ params, onChange }: { params: ShapeParams; on
   return (
     <div className="space-y-4">
       <Section title="Forma">
+        <p className="-mt-1 text-[11px] text-neutral-500">
+          Tip: en el 3D podés arrastrar <span className="text-amber-400">●</span> perfil, <span className="text-sky-400">▲</span> altura,{" "}
+          <span className="text-green-400">■</span> radio y el <span className="text-purple-400">○</span> anillo de twist.
+        </p>
         <Slider label="Altura" value={params.height} min={20} max={400} unit="mm" onChange={(v) => set("height", v)} />
         <Slider label="Radio" value={params.radius} min={10} max={150} step={0.5} unit="mm" onChange={(v) => set("radius", v)} />
         <Slider label="Cuadrado" value={params.squareness} min={0} max={1} step={0.01} onChange={(v) => set("squareness", v)} />
         <Slider label="Twist" value={params.twist} min={-360} max={360} unit="°" onChange={(v) => set("twist", v)} />
         <div>
-          <div className="mb-1 text-xs text-neutral-400">Perfil (arrastrá los puntos · se enganchan entre sí, Alt para libre)</div>
+          <div className="mb-1 text-xs text-neutral-400">Perfil (se enganchan entre sí · Alt para libre)</div>
           <ProfileEditor profile={params.profile} onChange={(p) => set("profile", p)} />
-          <button
-            className="mt-1 text-xs text-neutral-500 hover:text-neutral-300"
-            onClick={() => set("profile", params.profile.map(() => 1))}
-          >
+          <button className="mt-1 text-xs text-neutral-500 hover:text-neutral-300" onClick={() => set("profile", params.profile.map(() => 1))}>
             reset perfil
           </button>
         </div>
-      </Section>
-
-      <Section title="Estrías / Patrón">
-        <Slider label="Cantidad" value={params.ribCount} min={0} max={200} onChange={(v) => set("ribCount", v)} />
-        <Slider label="Profundidad" value={params.ribAmplitude} min={-10} max={10} step={0.1} unit="mm" onChange={(v) => set("ribAmplitude", v)} />
-        <label className="block text-xs text-neutral-400">
-          Onda
-          <select
-            className="mt-1 w-full rounded bg-neutral-800 px-2 py-1 text-neutral-100"
-            value={params.ribWaveform}
-            onChange={(e) => set("ribWaveform", e.target.value as Waveform)}
-          >
-            <option value="scallop">Estría redondeada (scallop)</option>
-            <option value="sine">Seno (suave)</option>
-            <option value="triangle">Triángulo</option>
-            <option value="square">Cuadrada</option>
-          </select>
-        </label>
-        {params.ribWaveform === "square" && (
-          <Slider label="Filo" value={params.ribSharpness} min={0} max={1} step={0.01} onChange={(v) => set("ribSharpness", v)} />
-        )}
-        <Slider label="Desde" value={params.ribStart} min={0} max={1} step={0.01} onChange={(v) => set("ribStart", v)} />
-        <Slider label="Hasta" value={params.ribEnd} min={0} max={1} step={0.01} onChange={(v) => set("ribEnd", v)} />
-        <Slider label="Transición" value={params.ribFade} min={0} max={40} step={0.5} unit="mm" onChange={(v) => set("ribFade", v)} />
       </Section>
 
       <Section title="Pared / Hueco">
@@ -129,18 +106,41 @@ export default function Controls({ params, onChange }: { params: ShapeParams; on
           </>
         ) : (
           <p className="text-xs text-neutral-500">
-            Exporta el volumen lleno. Imprimilo en <em>vase mode / spiralize</em> en el slicer: una sola pared continua, sin
-            costuras.
+            Exporta el volumen lleno. Imprimilo en <em>vase mode / spiralize</em> en el slicer: una sola pared continua, sin costuras.
           </p>
         )}
       </Section>
 
-      <Section title="Resolución preview">
+      <Section title="Avanzado: patrón" open={false}>
+        <Slider label="Cantidad de estrías" value={params.ribCount} min={0} max={200} onChange={(v) => set("ribCount", v)} />
+        <Slider label="Profundidad" value={params.ribAmplitude} min={-10} max={10} step={0.1} unit="mm" onChange={(v) => set("ribAmplitude", v)} />
+        <label className="block text-xs text-neutral-400">
+          Onda
+          <select
+            className="mt-1 w-full rounded bg-neutral-800 px-2 py-1 text-neutral-100"
+            value={params.ribWaveform}
+            onChange={(e) => set("ribWaveform", e.target.value as Waveform)}
+          >
+            <option value="scallop">Estría redondeada (scallop)</option>
+            <option value="sine">Seno (suave)</option>
+            <option value="triangle">Triángulo</option>
+            <option value="square">Cuadrada</option>
+          </select>
+        </label>
+        {params.ribWaveform === "square" && (
+          <Slider label="Filo" value={params.ribSharpness} min={0} max={1} step={0.01} onChange={(v) => set("ribSharpness", v)} />
+        )}
+        <Slider label="Desde" value={params.ribStart} min={0} max={1} step={0.01} onChange={(v) => set("ribStart", v)} />
+        <Slider label="Hasta" value={params.ribEnd} min={0} max={1} step={0.01} onChange={(v) => set("ribEnd", v)} />
+        <Slider label="Transición" value={params.ribFade} min={0} max={40} step={0.5} unit="mm" onChange={(v) => set("ribFade", v)} />
+      </Section>
+
+      <Section title="Avanzado: resolución preview" open={false}>
         <Slider label="Segmentos radiales" value={params.radialSegments} min={32} max={720} step={8} onChange={(v) => set("radialSegments", v)} />
         <Slider label="Segmentos altura" value={params.heightSegments} min={8} max={400} step={4} onChange={(v) => set("heightSegments", v)} />
         <p className="text-xs text-neutral-500">
-          Se usan {effectiveRadialSegments(params)} segmentos radiales (múltiplo de la cantidad de estrías, para que el patrón
-          no se aliase). El STL se exporta siempre en alta resolución.
+          Se usan {effectiveRadialSegments(params)} segmentos radiales (múltiplo de la cantidad de estrías, para que el patrón no se aliase). El
+          STL se exporta siempre en alta resolución.
         </p>
       </Section>
     </div>
