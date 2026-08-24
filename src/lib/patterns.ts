@@ -1,4 +1,5 @@
 import { DEFAULT_PARAMS, PRESETS, type ShapeParams, type Waveform } from "./shape";
+import type { Dictionary } from "@/i18n/dictionaries";
 
 // ---------- rib "materials" ----------
 
@@ -13,14 +14,14 @@ export interface Pattern {
 }
 
 export const PATTERNS: Pattern[] = [
-  { id: "smooth", name: "Liso", ribCount: 0, ribAmplitude: 0, ribWaveform: "scallop" },
-  { id: "fine", name: "Estría fina", ribCount: 96, ribAmplitude: 0.8, ribWaveform: "scallop" },
+  { id: "smooth", name: "Smooth", ribCount: 0, ribAmplitude: 0, ribWaveform: "scallop" },
+  { id: "fine", name: "Fine ribs", ribCount: 96, ribAmplitude: 0.8, ribWaveform: "scallop" },
   { id: "reeded", name: "Reeded", ribCount: 48, ribAmplitude: 1.5, ribWaveform: "scallop" },
-  { id: "fluted", name: "Acanalado", ribCount: 28, ribAmplitude: -2, ribWaveform: "scallop" },
-  { id: "waves", name: "Ondas", ribCount: 12, ribAmplitude: 4, ribWaveform: "sine" },
-  { id: "twist", name: "Twist suave", ribCount: 8, ribAmplitude: 6, ribWaveform: "sine", twist: 60 },
-  { id: "segments", name: "Gajos", ribCount: 16, ribAmplitude: 3, ribWaveform: "triangle" },
-  { id: "facet", name: "Facetado", ribCount: 20, ribAmplitude: 1.5, ribWaveform: "square", ribSharpness: 1 },
+  { id: "fluted", name: "Fluted", ribCount: 28, ribAmplitude: -2, ribWaveform: "scallop" },
+  { id: "waves", name: "Waves", ribCount: 12, ribAmplitude: 4, ribWaveform: "sine" },
+  { id: "twist", name: "Soft twist", ribCount: 8, ribAmplitude: 6, ribWaveform: "sine", twist: 60 },
+  { id: "segments", name: "Segments", ribCount: 16, ribAmplitude: 3, ribWaveform: "triangle" },
+  { id: "facet", name: "Faceted", ribCount: 20, ribAmplitude: 1.5, ribWaveform: "square", ribSharpness: 1 },
 ];
 
 export function applyPattern(p: ShapeParams, pat: Pattern, intensity = 1): ShapeParams {
@@ -53,6 +54,7 @@ export function patternIntensity(p: ShapeParams, pat: Pattern): number {
 // ---------- gallery ----------
 
 export interface GalleryItem {
+  id: string;
   name: string;
   params: ShapeParams;
 }
@@ -62,23 +64,28 @@ const base = DEFAULT_PARAMS;
 export const GALLERY: GalleryItem[] = [
   ...PRESETS,
   {
+    id: "torso",
     name: "Torso",
     params: { ...base, height: 220, radius: 45, profile: [0.9, 1.05, 0.92, 0.72, 0.86, 1, 0.72], ribCount: 64, ribAmplitude: 0.8, ribStart: 0, twist: 15 },
   },
   {
-    name: "Botella",
+    id: "bottle",
+    name: "Bottle",
     params: { ...base, height: 210, radius: 42, profile: [0.92, 1, 1, 0.97, 0.7, 0.4, 0.34], ribCount: 0, ribAmplitude: 0, ribStart: 0 },
   },
   {
+    id: "bowl",
     name: "Bowl",
     params: { ...base, height: 70, radius: 75, profile: [0.45, 0.72, 0.88, 0.96, 1, 1.03, 1.05], ribCount: 48, ribAmplitude: 1.5, ribStart: 0, wall: 1.6, bottom: 2 },
   },
   {
-    name: "Lapicero",
+    id: "pencil-cup",
+    name: "Pencil cup",
     params: { ...base, height: 100, radius: 38, squareness: 0.5, ribCount: 48, ribAmplitude: 1.5, ribStart: 0, wall: 1.6, bottom: 2 },
   },
   {
-    name: "Facetado",
+    id: "faceted",
+    name: "Faceted",
     params: { ...base, height: 170, radius: 48, profile: [0.8, 0.95, 1.05, 1.08, 1.02, 0.9, 0.78], ribCount: 20, ribAmplitude: 1.5, ribWaveform: "square", ribSharpness: 1, ribStart: 0, twist: 40 },
   },
 ];
@@ -138,3 +145,10 @@ export function randomParams(rng: () => number = Math.random): ShapeParams {
     intensity,
   );
 }
+
+// ---------- localized names ----------
+
+/** Translated pattern name; falls back to the built-in (English) name. */
+export const patternName = (pat: Pattern, t: Dictionary) => t.patterns.names[pat.id] ?? pat.name;
+/** Translated gallery item name; falls back to the built-in (English) name. */
+export const galleryName = (item: GalleryItem, t: Dictionary) => t.gallery.items[item.id] ?? item.name;

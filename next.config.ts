@@ -9,7 +9,12 @@ const nextConfig: NextConfig = {
         destination: "https://lathe3d.com/:path*",
         permanent: true,
       },
+      // the default language (English) lives at the root
+      { source: "/en", destination: "/", permanent: true },
     ];
+  },
+  async rewrites() {
+    return [{ source: "/", destination: "/en" }];
   },
 };
 

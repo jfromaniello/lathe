@@ -13,6 +13,7 @@ import { DEFAULT_PARAMS, bounds, type ShapeParams } from "@/lib/shape";
 import { downloadBlob, makeSTL } from "@/lib/export";
 import { decodeParams, decodeView, encodeAll } from "@/lib/url";
 import { useHistory } from "@/hooks/useHistory";
+import { useT } from "@/i18n/context";
 
 export default function App() {
   // rendered client-only (see page.tsx), so reading the URL in the initializer is safe
@@ -22,6 +23,7 @@ export default function App() {
   const [view, setView] = useState<ViewSettings>(() => decodeView(window.location.search, DEFAULT_VIEW));
   const [stats, setStats] = useState<{ tris: number; x: number; y: number; z: number } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const t = useT();
 
   // keep the address bar in sync so the URL is always shareable
   useEffect(() => {
@@ -72,7 +74,7 @@ export default function App() {
         <div className="flex items-start justify-between gap-2 border-b border-neutral-800 p-4">
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Lathe</h1>
-            <p className="text-xs text-neutral-500">Objetos paramétricos para imprimir en 3D</p>
+            <p className="text-xs text-neutral-500">{t.app.tagline}</p>
           </div>
           <ShareButton params={params} view={view} />
         </div>
@@ -84,7 +86,7 @@ export default function App() {
         <div className="border-t border-neutral-800 p-4">
           {stats && (
             <div className="mb-2 text-xs text-neutral-500 tabular-nums">
-              {stats.x.toFixed(1)} × {stats.y.toFixed(1)} × {stats.z.toFixed(1)} mm · {stats.tris.toLocaleString()} tris (preview)
+              {stats.x.toFixed(1)} × {stats.y.toFixed(1)} × {stats.z.toFixed(1)} mm · {stats.tris.toLocaleString()} {t.app.trisPreview}
             </div>
           )}
           <button
@@ -92,7 +94,7 @@ export default function App() {
             disabled={exporting}
             className="w-full rounded-md bg-amber-500 px-3 py-2 text-sm font-medium text-black hover:bg-amber-400 disabled:opacity-60"
           >
-            {exporting ? "Generando…" : "Exportar STL"}
+            {exporting ? t.app.generating : t.app.exportStl}
           </button>
         </div>
       </aside>
@@ -103,13 +105,7 @@ export default function App() {
         {/* floating view toolbar */}
         <div className="pointer-events-none absolute right-2 top-2 flex max-w-[calc(100%-1rem)] flex-col items-end gap-1.5 md:right-3 md:top-3 md:gap-2">
           <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-1 rounded-xl border border-black/10 bg-white/70 p-1 shadow-lg backdrop-blur md:p-1.5">
-            {(
-              [
-                ["matte", "PLA mate"],
-                ["wood", "Madera"],
-                ["glass", "Translúcido"],
-              ] as [MaterialKind, string][]
-            ).map(([k, label]) => (
+            {(["matte", "wood", "glass"] as MaterialKind[]).map((k) => (
               <button
                 key={k}
                 onClick={() => setV("material", k)}
@@ -117,7 +113,7 @@ export default function App() {
                   view.material === k ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"
                 }`}
               >
-                {label}
+                {t.materials[k]}
               </button>
             ))}
             <div className="mx-1 h-5 w-px bg-black/10" />
@@ -125,7 +121,7 @@ export default function App() {
               <button
                 key={c.hex}
                 onClick={() => setV("color", c.hex)}
-                title={c.name}
+                title={t.colors[c.id]}
                 className={`h-5 w-5 rounded-full border-2 transition md:h-6 md:w-6 ${view.color === c.hex ? "border-neutral-900 scale-110" : "border-white/70 hover:scale-110"}`}
                 style={{ background: c.hex }}
               />
@@ -135,16 +131,16 @@ export default function App() {
             <button
               onClick={() => setV("showHandles", !view.showHandles)}
               className={`rounded-lg px-2 py-0.5 text-[11px] font-medium transition md:px-2.5 md:py-1 md:text-xs ${view.showHandles ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"}`}
-              title="Manijas para editar directamente en 3D"
+              title={t.viewer.handlesHint}
             >
-              ✥ Manijas
+              {t.viewer.handles}
             </button>
             <button
               onClick={() => setV("showMug", !view.showMug)}
               className={`rounded-lg px-2 py-0.5 text-[11px] font-medium transition md:px-2.5 md:py-1 md:text-xs ${view.showMug ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"}`}
-              title="Una taza de 90 mm al lado, para sentir el tamaño"
+              title={t.viewer.scaleHint}
             >
-              ☕ Escala
+              {t.viewer.scale}
             </button>
           </div>
         </div>

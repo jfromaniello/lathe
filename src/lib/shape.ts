@@ -47,13 +47,15 @@ export const DEFAULT_PARAMS: ShapeParams = {
   heightSegments: 128,
 };
 
-export const PRESETS: { name: string; params: ShapeParams }[] = [
+export const PRESETS: { id: string; name: string; params: ShapeParams }[] = [
   {
-    name: "Florero estriado",
+    id: "fluted-vase",
+    name: "Fluted vase",
     params: { ...DEFAULT_PARAMS },
   },
   {
-    name: "Lámpara twist",
+    id: "twist-lamp",
+    name: "Twist lamp",
     params: {
       ...DEFAULT_PARAMS,
       height: 120,
@@ -72,7 +74,8 @@ export const PRESETS: { name: string; params: ShapeParams }[] = [
     },
   },
   {
-    name: "Tacho de escritorio",
+    id: "desk-bin",
+    name: "Desk bin",
     params: {
       ...DEFAULT_PARAMS,
       height: 150,
@@ -89,7 +92,8 @@ export const PRESETS: { name: string; params: ShapeParams }[] = [
     },
   },
   {
-    name: "Cuadrado twist",
+    id: "square-twist",
+    name: "Square twist",
     params: {
       ...DEFAULT_PARAMS,
       height: 160,

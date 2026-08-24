@@ -9,13 +9,15 @@ export interface ViewSettings {
 
 export const MATERIALS: MaterialKind[] = ["matte", "wood", "glass"];
 
-export const COLORS: { name: string; hex: string }[] = [
-  { name: "Blanco", hex: "#f1ece3" },
-  { name: "Beige", hex: "#d8c7a6" },
-  { name: "Terracota", hex: "#c47a5e" },
-  { name: "Salvia", hex: "#9aa88a" },
-  { name: "Azul", hex: "#5b7ba5" },
-  { name: "Negro", hex: "#2a2a2a" },
+export type ColorId = "white" | "beige" | "terracotta" | "sage" | "blue" | "black";
+
+export const COLORS: { id: ColorId; name: string; hex: string }[] = [
+  { id: "white", name: "White", hex: "#f1ece3" },
+  { id: "beige", name: "Beige", hex: "#d8c7a6" },
+  { id: "terracotta", name: "Terracotta", hex: "#c47a5e" },
+  { id: "sage", name: "Sage", hex: "#9aa88a" },
+  { id: "blue", name: "Blue", hex: "#5b7ba5" },
+  { id: "black", name: "Black", hex: "#2a2a2a" },
 ];
 
 export const WOOD_COLOR = "#b58a5c";

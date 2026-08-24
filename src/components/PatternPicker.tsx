@@ -1,19 +1,21 @@
 "use client";
 
 import { DEFAULT_PARAMS, type ShapeParams } from "@/lib/shape";
-import { PATTERNS, applyPattern, matchPattern, patternIntensity } from "@/lib/patterns";
+import { PATTERNS, applyPattern, matchPattern, patternIntensity, patternName } from "@/lib/patterns";
+import { useT } from "@/i18n/context";
 import Thumb from "./Thumb";
 
 // swatches are rendered on a short neutral cylinder so the pattern is what you compare
 const SWATCH_BASE: ShapeParams = { ...DEFAULT_PARAMS, height: 70, radius: 40, squareness: 0, profile: [1, 1, 1, 1, 1, 1, 1], ribStart: 0, ribEnd: 1, twist: 0, mode: "solid" };
 
 export default function PatternPicker({ params, onChange }: { params: ShapeParams; onChange: (p: ShapeParams) => void }) {
+  const t = useT();
   const current = matchPattern(params);
   const intensity = current ? patternIntensity(params, current) : 1;
 
   return (
     <div>
-      <div className="mb-2 text-sm font-medium text-neutral-200">Textura</div>
+      <div className="mb-2 text-sm font-medium text-neutral-200">{t.patterns.title}</div>
       <div className="grid grid-cols-4 gap-1.5">
         {PATTERNS.map((pat) => {
           const active = current?.id === pat.id;
@@ -25,12 +27,12 @@ export default function PatternPicker({ params, onChange }: { params: ShapeParam
               className={`overflow-hidden rounded-md border text-center transition ${
                 active ? "border-amber-500 bg-amber-500/10" : "border-neutral-800 bg-neutral-900/60 hover:border-neutral-600"
               }`}
-              title={pat.name}
+              title={patternName(pat, t)}
             >
               <div className="aspect-square w-full p-0.5">
                 <Thumb params={swatch} options={{ azimuth: 20 }} className="h-full w-full object-cover" />
               </div>
-              <div className="truncate px-1 pb-1 text-[10px] leading-tight text-neutral-300">{pat.name}</div>
+              <div className="truncate px-1 pb-1 text-[10px] leading-tight text-neutral-300">{patternName(pat, t)}</div>
             </button>
           );
         })}
@@ -38,7 +40,7 @@ export default function PatternPicker({ params, onChange }: { params: ShapeParam
       {current && current.id !== "smooth" && (
         <label className="mt-2 block">
           <div className="flex justify-between text-xs text-neutral-400">
-            <span>Intensidad</span>
+            <span>{t.patterns.intensity}</span>
             <span className="tabular-nums">{intensity.toFixed(1)}×</span>
           </div>
           <input
@@ -53,7 +55,7 @@ export default function PatternPicker({ params, onChange }: { params: ShapeParam
         </label>
       )}
       {!current && (
-        <p className="mt-2 text-xs text-neutral-500">Patrón personalizado (ver Avanzado).</p>
+        <p className="mt-2 text-xs text-neutral-500">{t.patterns.custom}</p>
       )}
     </div>
   );

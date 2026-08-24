@@ -3,6 +3,7 @@
 import { useDeferredValue } from "react";
 import type { ShapeParams } from "@/lib/shape";
 import Thumb from "./Thumb";
+import { useT } from "@/i18n/context";
 
 export default function HistoryStrip({
   past,
@@ -21,6 +22,7 @@ export default function HistoryStrip({
   canUndo: boolean;
   canRedo: boolean;
 }) {
+  const t = useT();
   const deferredCurrent = useDeferredValue(current); // don't re-render the thumbnail on every slider tick
   const MAX = 14;
   const start = Math.max(0, past.length - MAX);
@@ -32,7 +34,7 @@ export default function HistoryStrip({
           onClick={onUndo}
           disabled={!canUndo}
           className="rounded-md bg-neutral-900/80 px-2 py-1 text-xs text-white hover:bg-neutral-900 disabled:opacity-30"
-          title="Deshacer (⌘Z)"
+          title={t.history.undo}
         >
           ↶
         </button>
@@ -40,7 +42,7 @@ export default function HistoryStrip({
           onClick={onRedo}
           disabled={!canRedo}
           className="rounded-md bg-neutral-900/80 px-2 py-1 text-xs text-white hover:bg-neutral-900 disabled:opacity-30"
-          title="Rehacer (⇧⌘Z)"
+          title={t.history.redo}
         >
           ↷
         </button>
@@ -51,12 +53,12 @@ export default function HistoryStrip({
             key={start + i}
             onClick={() => onJump(start + i)}
             className="h-12 w-10 shrink-0 overflow-hidden rounded-md border border-black/10 bg-white/60 opacity-70 transition hover:opacity-100 hover:ring-2 hover:ring-amber-500"
-            title={`Volver al paso ${start + i + 1}`}
+            title={t.history.step(start + i + 1)}
           >
             <Thumb params={p} className="h-full w-full object-contain" />
           </button>
         ))}
-        <div className="h-14 w-11 shrink-0 overflow-hidden rounded-md border-2 border-amber-500 bg-white/80" title="Ahora">
+        <div className="h-14 w-11 shrink-0 overflow-hidden rounded-md border-2 border-amber-500 bg-white/80" title={t.history.now}>
           <Thumb params={deferredCurrent} className="h-full w-full object-contain" />
         </div>
       </div>

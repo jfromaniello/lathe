@@ -4,8 +4,9 @@ import { decodeParams, decodeView } from "@/lib/url";
 import { renderColor } from "@/lib/view";
 import { rasterize } from "@/lib/raster";
 import { encodePNG } from "@/lib/png";
-import { matchPattern } from "@/lib/patterns";
+import { matchPattern, patternName } from "@/lib/patterns";
 import { sanitize } from "@/lib/shape";
+import { getDict, isLang } from "@/i18n";
 
 export const maxDuration = 30;
 
@@ -16,6 +17,8 @@ const MODEL_W = 620;
 export async function GET(req: NextRequest) {
   const p = sanitize(decodeParams(req.nextUrl.search));
   const view = decodeView(req.nextUrl.search);
+  const lang = req.nextUrl.searchParams.get("l");
+  const t = getDict(isLang(lang) ? lang : "en");
 
   const px = rasterize(p, { width: MODEL_W, height: H, color: renderColor(view) });
   const png = encodePNG(px, MODEL_W, H);
@@ -24,11 +27,11 @@ export async function GET(req: NextRequest) {
   const pattern = matchPattern(p);
   const dims = `${Math.round(p.radius * 2)} × ${Math.round(p.height)} mm`;
   const facts = [
-    pattern ? (pattern.id === "smooth" ? "Liso" : `${pattern.name} · ${p.ribCount} estrías`) : `${p.ribCount} estrías`,
-    p.twist ? `Twist ${p.twist}°` : null,
-    p.squareness > 0.15 ? "Sección cuadrada" : null,
-    p.mode === "solid" ? "Vase mode" : `Pared ${p.wall} mm`,
-    view.material === "wood" ? "PLA madera" : view.material === "glass" ? "Translúcido" : null,
+    pattern ? (pattern.id === "smooth" ? t.og.smooth : `${patternName(pattern, t)} · ${t.og.ribs(p.ribCount)}`) : t.og.ribs(p.ribCount),
+    p.twist ? t.og.twist(p.twist) : null,
+    p.squareness > 0.15 ? t.og.square : null,
+    p.mode === "solid" ? t.og.vaseMode : t.og.wall(p.wall),
+    view.material === "wood" ? t.og.wood : view.material === "glass" ? t.og.glass : null,
   ].filter(Boolean) as string[];
 
   return new ImageResponse(
@@ -66,7 +69,7 @@ export async function GET(req: NextRequest) {
               </div>
             ))}
           </div>
-          <div style={{ marginTop: 44, fontSize: 22, color: "#8a7f72" }}>Diseño paramétrico · listo para imprimir en 3D</div>
+          <div style={{ marginTop: 44, fontSize: 22, color: "#8a7f72" }}>{t.og.tagline}</div>
         </div>
       </div>
     ),

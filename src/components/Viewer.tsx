@@ -8,6 +8,7 @@ import { buildGeometry, type ShapeParams } from "@/lib/shape";
 import Handles from "./Handles";
 
 import { renderColor, type ViewSettings } from "@/lib/view";
+import { useT } from "@/i18n/context";
 
 function Model({ params, view, onGeometry }: { params: ShapeParams; view: ViewSettings; onGeometry?: (g: THREE.BufferGeometry) => void }) {
   const geometry = useMemo(() => buildGeometry(params), [params]);
@@ -51,6 +52,7 @@ function FitCamera({ dist, h }: { dist: number; h: number }) {
 
 /** A standard 90 mm coffee mug, for scale. */
 function Mug({ x }: { x: number }) {
+  const t = useT();
   return (
     <group position={[x, 0, 0]}>
       <mesh position={[0, 45, 0]}>
@@ -66,7 +68,7 @@ function Mug({ x }: { x: number }) {
         <meshStandardMaterial color="#8d867d" transparent opacity={0.35} depthWrite={false} />
       </mesh>
       <Html position={[0, -6, 0]} center style={{ pointerEvents: "none" }}>
-        <div className="whitespace-nowrap text-[10px] text-neutral-500">taza · 90 mm</div>
+        <div className="whitespace-nowrap text-[10px] text-neutral-500">{t.viewer.mug}</div>
       </Html>
     </group>
   );
