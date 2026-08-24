@@ -68,7 +68,7 @@ export default function App() {
 
   return (
     <main className="flex h-dvh w-screen flex-col overflow-hidden bg-neutral-950 text-neutral-100 md:flex-row">
-      <aside className="order-2 flex min-h-0 flex-1 flex-col border-t border-neutral-800 md:order-1 md:w-[380px] md:flex-none md:border-t-0 md:border-r">
+      <aside className="flex min-h-0 flex-1 flex-col border-b border-neutral-800 md:w-[380px] md:flex-none md:border-b-0 md:border-r">
         <div className="flex items-start justify-between gap-2 border-b border-neutral-800 p-4">
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Lathe</h1>
@@ -97,7 +97,7 @@ export default function App() {
         </div>
       </aside>
 
-      <section className="relative order-1 h-[45dvh] shrink-0 md:order-2 md:h-auto md:flex-1">
+      <section className="relative h-[45dvh] shrink-0 md:h-auto md:flex-1">
         <Viewer params={params} view={view} onChange={setParams} onGeometry={onGeometry} />
 
         {/* floating view toolbar */}
