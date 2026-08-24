@@ -1,5 +1,6 @@
 // Tiny software renderer: writes a PPM of the mesh (painter's algorithm, Lambert shading).
 import { writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { buildGeometry, PRESETS } from "../src/lib/shape";
 
 const W = 420, H = 520;
@@ -57,4 +58,9 @@ function render(name: string, p: (typeof PRESETS)[0]["params"], file: string) {
   console.log("wrote", file, name, tris.length, "tris");
 }
 const out = process.argv[2];
-PRESETS.forEach((p, i) => render(p.name, p.params, `${out}/preset${i}.ppm`));
+if (process.env.PARAMS) {
+  // render a single params JSON file: PARAMS=file.json tsx scripts/render.ts outdir
+  render(process.env.PARAMS, JSON.parse(readFileSync(process.env.PARAMS, "utf8")), `${out}/custom.ppm`);
+} else {
+  PRESETS.forEach((p, i) => render(p.name, p.params, `${out}/preset${i}.ppm`));
+}
