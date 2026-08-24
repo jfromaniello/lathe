@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
-import { decodeParams } from "@/lib/url";
+import { decodeParams, decodeView } from "@/lib/url";
+import { renderColor } from "@/lib/view";
 import { rasterize } from "@/lib/raster";
 import { encodePNG } from "@/lib/png";
 import { matchPattern } from "@/lib/patterns";
@@ -14,9 +15,9 @@ const MODEL_W = 620;
 
 export async function GET(req: NextRequest) {
   const p = sanitize(decodeParams(req.nextUrl.search));
-  const color = req.nextUrl.searchParams.get("c") ?? "#efe9df";
+  const view = decodeView(req.nextUrl.search);
 
-  const px = rasterize(p, { width: MODEL_W, height: H, color: /^#[0-9a-f]{6}$/i.test(color) ? color : "#efe9df" });
+  const px = rasterize(p, { width: MODEL_W, height: H, color: renderColor(view) });
   const png = encodePNG(px, MODEL_W, H);
   const src = `data:image/png;base64,${png.toString("base64")}`;
 
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest) {
     p.twist ? `Twist ${p.twist}°` : null,
     p.squareness > 0.15 ? "Sección cuadrada" : null,
     p.mode === "solid" ? "Vase mode" : `Pared ${p.wall} mm`,
+    view.material === "wood" ? "PLA madera" : view.material === "glass" ? "Translúcido" : null,
   ].filter(Boolean) as string[];
 
   return new ImageResponse(

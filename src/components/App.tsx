@@ -7,10 +7,11 @@ import Gallery from "@/components/Gallery";
 import PatternPicker from "@/components/PatternPicker";
 import HistoryStrip from "@/components/HistoryStrip";
 import ShareButton from "@/components/ShareButton";
-import Viewer, { COLORS, DEFAULT_VIEW, type MaterialKind, type ViewSettings } from "@/components/Viewer";
+import Viewer from "@/components/Viewer";
+import { COLORS, DEFAULT_VIEW, type MaterialKind, type ViewSettings } from "@/lib/view";
 import { DEFAULT_PARAMS, bounds, type ShapeParams } from "@/lib/shape";
 import { downloadBlob, makeSTL } from "@/lib/export";
-import { decodeParams, encodeParams } from "@/lib/url";
+import { decodeParams, decodeView, encodeAll } from "@/lib/url";
 import { useHistory } from "@/hooks/useHistory";
 
 export default function App() {
@@ -18,19 +19,19 @@ export default function App() {
   const history = useHistory<ShapeParams>(() => decodeParams(window.location.search, DEFAULT_PARAMS));
   const params = history.state;
   const setParams = history.set;
-  const [view, setView] = useState<ViewSettings>(DEFAULT_VIEW);
+  const [view, setView] = useState<ViewSettings>(() => decodeView(window.location.search, DEFAULT_VIEW));
   const [stats, setStats] = useState<{ tris: number; x: number; y: number; z: number } | null>(null);
   const [exporting, setExporting] = useState(false);
 
   // keep the address bar in sync so the URL is always shareable
   useEffect(() => {
     const t = setTimeout(() => {
-      const qs = encodeParams(params);
+      const qs = encodeAll(params, view);
       const next = `${window.location.pathname}${qs ? `?${qs}` : ""}`;
       if (next !== `${window.location.pathname}${window.location.search}`) window.history.replaceState(null, "", next);
     }, 300);
     return () => clearTimeout(t);
-  }, [params]);
+  }, [params, view]);
 
   // keyboard: ⌘Z / ⌘⇧Z (or ctrl)
   useEffect(() => {
@@ -73,7 +74,7 @@ export default function App() {
             <h1 className="text-lg font-semibold tracking-tight">Lathe</h1>
             <p className="text-xs text-neutral-500">Objetos paramétricos para imprimir en 3D</p>
           </div>
-          <ShareButton params={params} />
+          <ShareButton params={params} view={view} />
         </div>
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
           <Gallery onPick={setParams} />

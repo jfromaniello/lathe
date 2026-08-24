@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import type { ShapeParams } from "@/lib/shape";
-import { shareUrl } from "@/lib/url";
+import { shareUrl, type ShareableView } from "@/lib/url";
 
-export default function ShareButton({ params }: { params: ShapeParams }) {
+export default function ShareButton({ params, view }: { params: ShapeParams; view: ShareableView }) {
   const [state, setState] = useState<"idle" | "copied" | "manual">("idle");
   const [url, setUrl] = useState("");
 
@@ -16,7 +16,7 @@ export default function ShareButton({ params }: { params: ShapeParams }) {
   }, [state]);
 
   const share = async () => {
-    const u = shareUrl(params);
+    const u = shareUrl(params, view);
     setUrl(u);
     try {
       await navigator.clipboard.writeText(u);

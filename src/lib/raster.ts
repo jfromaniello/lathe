@@ -70,7 +70,7 @@ export function rasterize(params: ShapeParams, o: RasterOptions): Uint8Array {
     // make normals face the camera (double-sided material)
     if (n.dot(view) < 0) n.negate();
     const diff = Math.max(0, n.dot(key)) * 0.7 + Math.max(0, n.dot(fill)) * 0.25 + Math.max(0, n.dot(rim)) * 0.15;
-    const hemi = 0.22 + 0.16 * (n.y * 0.5 + 0.5);
+    const hemi = 0.32 + 0.16 * (n.y * 0.5 + 0.5);
     const h = key.clone().add(view).normalize();
     const spec = Math.pow(Math.max(0, n.dot(h)), 24) * 0.12;
     shade[i] = hemi + diff + spec;

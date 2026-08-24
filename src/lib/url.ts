@@ -1,4 +1,5 @@
 import { DEFAULT_PARAMS, type ShapeParams, type Waveform, type Mode } from "./shape";
+import { DEFAULT_VIEW, MATERIALS, type MaterialKind, type ViewSettings } from "./view";
 
 // short URL keys for each param
 const KEYS: Record<keyof ShapeParams, string> = {
@@ -91,8 +92,34 @@ export function decodeParams(search: string, base: ShapeParams = DEFAULT_PARAMS)
   return p;
 }
 
-export function shareUrl(p: ShapeParams): string {
-  const qs = encodeParams(p);
+// ---------- view (material + color) ----------
+
+export type ShareableView = Pick<ViewSettings, "material" | "color">;
+
+export function encodeView(v: ShareableView): string {
+  const q = new URLSearchParams();
+  if (v.material !== DEFAULT_VIEW.material) q.set("mat", v.material);
+  if (v.color.toLowerCase() !== DEFAULT_VIEW.color.toLowerCase()) q.set("c", v.color.replace("#", "").toLowerCase());
+  return q.toString();
+}
+
+export function decodeView(search: string, base: ViewSettings = DEFAULT_VIEW): ViewSettings {
+  const q = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const v = { ...base };
+  const mat = q.get("mat");
+  if (mat && MATERIALS.includes(mat as MaterialKind)) v.material = mat as MaterialKind;
+  const c = q.get("c");
+  if (c && /^[0-9a-f]{6}$/i.test(c)) v.color = `#${c.toLowerCase()}`;
+  return v;
+}
+
+/** Full query string for a design: shape params + material/color. */
+export function encodeAll(p: ShapeParams, v: ShareableView): string {
+  return [encodeParams(p), encodeView(v)].filter(Boolean).join("&");
+}
+
+export function shareUrl(p: ShapeParams, v: ShareableView): string {
+  const qs = encodeAll(p, v);
   const base = `${window.location.origin}${window.location.pathname}`;
   return qs ? `${base}?${qs}` : base;
 }

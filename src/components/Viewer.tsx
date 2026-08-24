@@ -7,25 +7,7 @@ import * as THREE from "three";
 import { buildGeometry, type ShapeParams } from "@/lib/shape";
 import Handles from "./Handles";
 
-export type MaterialKind = "matte" | "wood" | "glass";
-
-export interface ViewSettings {
-  material: MaterialKind;
-  color: string;
-  showMug: boolean;
-  showHandles: boolean;
-}
-
-export const COLORS: { name: string; hex: string }[] = [
-  { name: "Blanco", hex: "#f1ece3" },
-  { name: "Beige", hex: "#d8c7a6" },
-  { name: "Terracota", hex: "#c47a5e" },
-  { name: "Salvia", hex: "#9aa88a" },
-  { name: "Azul", hex: "#5b7ba5" },
-  { name: "Negro", hex: "#2a2a2a" },
-];
-
-export const DEFAULT_VIEW: ViewSettings = { material: "matte", color: COLORS[0].hex, showMug: false, showHandles: true };
+import { renderColor, type ViewSettings } from "@/lib/view";
 
 function Model({ params, view, onGeometry }: { params: ShapeParams; view: ViewSettings; onGeometry?: (g: THREE.BufferGeometry) => void }) {
   const geometry = useMemo(() => buildGeometry(params), [params]);
@@ -37,7 +19,7 @@ function Model({ params, view, onGeometry }: { params: ShapeParams; view: ViewSe
   return (
     <mesh geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow>
       {view.material === "matte" && <meshStandardMaterial color={view.color} roughness={0.78} metalness={0} side={THREE.DoubleSide} />}
-      {view.material === "wood" && <meshStandardMaterial color="#b58a5c" roughness={0.65} metalness={0} side={THREE.DoubleSide} />}
+      {view.material === "wood" && <meshStandardMaterial color={renderColor(view)} roughness={0.65} metalness={0} side={THREE.DoubleSide} />}
       {view.material === "glass" && (
         <meshPhysicalMaterial
           color={view.color}
