@@ -67,8 +67,8 @@ export default function App() {
   const setV = <K extends keyof ViewSettings>(k: K, v: ViewSettings[K]) => setView((s) => ({ ...s, [k]: v }));
 
   return (
-    <main className="flex h-screen w-screen overflow-hidden bg-neutral-950 text-neutral-100">
-      <aside className="flex w-[380px] shrink-0 flex-col border-r border-neutral-800">
+    <main className="flex h-dvh w-screen flex-col overflow-hidden bg-neutral-950 text-neutral-100 md:flex-row">
+      <aside className="order-2 flex min-h-0 flex-1 flex-col border-t border-neutral-800 md:order-1 md:w-[380px] md:flex-none md:border-t-0 md:border-r">
         <div className="flex items-start justify-between gap-2 border-b border-neutral-800 p-4">
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Lathe</h1>
@@ -97,12 +97,12 @@ export default function App() {
         </div>
       </aside>
 
-      <section className="relative flex-1">
+      <section className="relative order-1 h-[45dvh] shrink-0 md:order-2 md:h-auto md:flex-1">
         <Viewer params={params} view={view} onChange={setParams} onGeometry={onGeometry} />
 
         {/* floating view toolbar */}
-        <div className="pointer-events-none absolute right-3 top-3 flex flex-col items-end gap-2">
-          <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-black/10 bg-white/70 p-1.5 shadow-lg backdrop-blur">
+        <div className="pointer-events-none absolute right-2 top-2 flex max-w-[calc(100%-1rem)] flex-col items-end gap-1.5 md:right-3 md:top-3 md:gap-2">
+          <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-1 rounded-xl border border-black/10 bg-white/70 p-1 shadow-lg backdrop-blur md:p-1.5">
             {(
               [
                 ["matte", "PLA mate"],
@@ -113,7 +113,7 @@ export default function App() {
               <button
                 key={k}
                 onClick={() => setV("material", k)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                className={`rounded-lg px-2 py-0.5 text-[11px] font-medium transition md:px-2.5 md:py-1 md:text-xs ${
                   view.material === k ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"
                 }`}
               >
@@ -126,7 +126,7 @@ export default function App() {
                 key={c.hex}
                 onClick={() => setV("color", c.hex)}
                 title={c.name}
-                className={`h-6 w-6 rounded-full border-2 transition ${view.color === c.hex ? "border-neutral-900 scale-110" : "border-white/70 hover:scale-110"}`}
+                className={`h-5 w-5 rounded-full border-2 transition md:h-6 md:w-6 ${view.color === c.hex ? "border-neutral-900 scale-110" : "border-white/70 hover:scale-110"}`}
                 style={{ background: c.hex }}
               />
             ))}
@@ -134,14 +134,14 @@ export default function App() {
           <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-black/10 bg-white/70 p-1.5 shadow-lg backdrop-blur">
             <button
               onClick={() => setV("showHandles", !view.showHandles)}
-              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${view.showHandles ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"}`}
+              className={`rounded-lg px-2 py-0.5 text-[11px] font-medium transition md:px-2.5 md:py-1 md:text-xs ${view.showHandles ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"}`}
               title="Manijas para editar directamente en 3D"
             >
               ✥ Manijas
             </button>
             <button
               onClick={() => setV("showMug", !view.showMug)}
-              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${view.showMug ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"}`}
+              className={`rounded-lg px-2 py-0.5 text-[11px] font-medium transition md:px-2.5 md:py-1 md:text-xs ${view.showMug ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"}`}
               title="Una taza de 90 mm al lado, para sentir el tamaño"
             >
               ☕ Escala

@@ -1,6 +1,6 @@
 "use client";
 
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, ContactShadows, Environment, Lightformer, Html } from "@react-three/drei";
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
@@ -32,6 +32,21 @@ function Model({ params, view, onGeometry }: { params: ShapeParams; view: ViewSe
       )}
     </mesh>
   );
+}
+
+/** Pull the camera back on narrow (portrait/mobile) viewports so the whole object stays framed. */
+function FitCamera({ dist, h }: { dist: number; h: number }) {
+  const camera = useThree((s) => s.camera);
+  const aspect = useThree((s) => s.size.width / s.size.height);
+  useEffect(() => {
+    const k = Math.max(1, 1.4 / Math.max(aspect, 0.3));
+    camera.position.set(dist * 0.75 * k, h * 0.75, dist * 0.75 * k);
+    camera.lookAt(0, h / 2, 0);
+    camera.updateProjectionMatrix();
+    // only re-frame when the viewport shape changes (not on every param tweak) so orbiting is not reset
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aspect]);
+  return null;
 }
 
 /** A standard 90 mm coffee mug, for scale. */
@@ -95,6 +110,7 @@ export default function Viewer({
         <orthographicCamera attach="shadow-camera" args={[-400, 400, 400, -400, 1, 2000]} />
       </directionalLight>
 
+      <FitCamera dist={dist} h={h} />
       <Model params={params} view={view} onGeometry={onGeometry} />
       {lit && <pointLight position={[0, h * 0.5, 0]} color="#ffd39b" intensity={h * h * 0.9} decay={2} distance={h * 6} />}
 
