@@ -71,7 +71,7 @@ export default function Controls({ params, onChange }: { params: ShapeParams; on
         <Slider label="Cuadrado" value={params.squareness} min={0} max={1} step={0.01} onChange={(v) => set("squareness", v)} />
         <Slider label="Twist" value={params.twist} min={-360} max={360} unit="°" onChange={(v) => set("twist", v)} />
         <div>
-          <div className="mb-1 text-xs text-neutral-400">Perfil (arrastrá los puntos)</div>
+          <div className="mb-1 text-xs text-neutral-400">Perfil (arrastrá los puntos · se enganchan entre sí, Alt para libre)</div>
           <ProfileEditor profile={params.profile} onChange={(p) => set("profile", p)} />
           <button
             className="mt-1 text-xs text-neutral-500 hover:text-neutral-300"
