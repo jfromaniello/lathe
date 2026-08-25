@@ -1,4 +1,4 @@
-import { DEFAULT_PARAMS, type ShapeParams, type Waveform, type Mode } from "./shape";
+import { DEFAULT_PARAMS, type ShapeParams, type Waveform, type Mode, type RibAlign } from "./shape";
 import { DEFAULT_VIEW, MATERIALS, type MaterialKind, type ViewSettings } from "./view";
 
 // short URL keys for each param
@@ -15,6 +15,7 @@ const KEYS: Record<keyof ShapeParams, string> = {
   ribStart: "r0",
   ribEnd: "r1",
   ribFade: "rf",
+  ribAlign: "al",
   twist: "tw",
   wall: "w",
   bottom: "b",
@@ -26,6 +27,7 @@ const KEYS: Record<keyof ShapeParams, string> = {
 const PREVIEW_ONLY: (keyof ShapeParams)[] = ["radialSegments", "heightSegments"];
 const WAVEFORMS: Waveform[] = ["sine", "triangle", "scallop", "square"];
 const MODES: Mode[] = ["shell", "solid"];
+const ALIGNS: RibAlign[] = ["center", "crest", "valley"];
 
 const fmt = (n: number) => String(Math.round(n * 1000) / 1000);
 
@@ -68,6 +70,8 @@ export function decodeParams(search: string, base: ShapeParams = DEFAULT_PARAMS)
   if (mode && MODES.includes(mode as Mode)) p.mode = mode as Mode;
   const wf = g("ribWaveform");
   if (wf && WAVEFORMS.includes(wf as Waveform)) p.ribWaveform = wf as Waveform;
+  const al = g("ribAlign");
+  if (al && ALIGNS.includes(al as RibAlign)) p.ribAlign = al as RibAlign;
 
   const prof = g("profile");
   if (prof) {

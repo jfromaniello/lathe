@@ -1,10 +1,11 @@
 "use client";
 
-import { effectiveRadialSegments, type ShapeParams, type Waveform, type Mode } from "@/lib/shape";
+import { effectiveRadialSegments, type ShapeParams, type Waveform, type Mode, type RibAlign } from "@/lib/shape";
 import { useT } from "@/i18n/context";
 import ProfileEditor from "./ProfileEditor";
 
 const WAVEFORMS: Waveform[] = ["scallop", "sine", "triangle", "square"];
+const ALIGNS: RibAlign[] = ["center", "crest", "valley"];
 
 function Slider({
   label,
@@ -138,6 +139,21 @@ export default function Controls({ params, onChange }: { params: ShapeParams; on
         <Slider label={t.ribStart} value={params.ribStart} min={0} max={1} step={0.01} onChange={(v) => set("ribStart", v)} />
         <Slider label={t.ribEnd} value={params.ribEnd} min={0} max={1} step={0.01} onChange={(v) => set("ribEnd", v)} />
         <Slider label={t.ribFade} value={params.ribFade} min={0} max={40} step={0.5} unit="mm" onChange={(v) => set("ribFade", v)} />
+        <div>
+          <div className="mb-1 text-xs text-neutral-400">{t.ribAlign}</div>
+          <div className="flex gap-1 rounded bg-neutral-800 p-1 text-xs">
+            {ALIGNS.map((a) => (
+              <button
+                key={a}
+                className={`flex-1 rounded px-2 py-1 ${params.ribAlign === a ? "bg-amber-500 text-black" : "text-neutral-300 hover:bg-neutral-700"}`}
+                onClick={() => set("ribAlign", a)}
+              >
+                {t.ribAligns[a]}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] text-neutral-500">{t.ribAlignHint}</p>
+        </div>
       </Section>
 
       <Section title={t.advancedResolution} open={false}>

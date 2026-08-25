@@ -2,6 +2,8 @@ import * as THREE from "three";
 
 export type Waveform = "sine" | "triangle" | "scallop" | "square";
 export type Mode = "shell" | "solid";
+/** Which part of the wave sits on the base profile: its midline, its crest (grooves carved inwards) or its valley (ribs grown outwards). */
+export type RibAlign = "center" | "crest" | "valley";
 
 export interface ShapeParams {
   mode: Mode;
@@ -16,6 +18,7 @@ export interface ShapeParams {
   ribStart: number; // 0..1 fraction of height
   ribEnd: number; // 0..1
   ribFade: number; // mm transition length (0 = hard step)
+  ribAlign: RibAlign;
   twist: number; // total degrees over full height
   wall: number; // mm
   bottom: number; // mm thickness, 0 = open
@@ -38,6 +41,7 @@ export const DEFAULT_PARAMS: ShapeParams = {
   ribStart: 0.3,
   ribEnd: 1,
   ribFade: 0,
+  ribAlign: "center",
   twist: 0,
   wall: 1.2,
   bottom: 1.6,
@@ -216,9 +220,22 @@ interface Node {
   surface: string; // vertices are shared only within the same surface (smooth normals inside, sharp edges between)
 }
 
+/** How far (mm) the deepest valley of the pattern sits below the base profile. */
+export function ribDepthBelowBase(p: ShapeParams): number {
+  const a = Math.abs(p.ribAmplitude);
+  switch (p.ribAlign) {
+    case "crest":
+      return 2 * a;
+    case "valley":
+      return 0;
+    default:
+      return a;
+  }
+}
+
 export function sanitize(p: ShapeParams): ShapeParams {
   const minProfile = Math.max(0.05, Math.min(...p.profile));
-  const minOuter = p.radius * minProfile - Math.abs(p.ribAmplitude);
+  const minOuter = p.radius * minProfile - ribDepthBelowBase(p);
   const out = { ...p };
   if (out.mode === "shell" && out.wall >= minOuter - 0.5) out.mode = "solid";
   if (out.mode === "shell") {
@@ -254,6 +271,7 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
   const zs = p.ribStart * H;
   const ze = p.ribEnd * H;
   const hasRibs = p.ribCount > 0 && p.ribAmplitude !== 0;
+  const ribOffset = p.ribAlign === "crest" ? -1 : p.ribAlign === "valley" ? 1 : 0;
 
   const envelope = (z: number) => {
     if (!hasRibs) return 0;
@@ -269,7 +287,10 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
     const base = p.radius * profileAt(p.profile, zf);
     let rib = 0;
     if (hasRibs && env > 0) {
-      rib = p.ribAmplitude * env * wave(p.ribWaveform, p.ribCount * u, p.ribSharpness);
+      // wave is in [-1, 1]; the offset (scaled by the envelope too, so the smooth zone blends into it) anchors
+      // the crest or the valley to the base profile instead of the midline
+      const w = Math.sign(p.ribAmplitude) * wave(p.ribWaveform, p.ribCount * u, p.ribSharpness);
+      rib = Math.abs(p.ribAmplitude) * env * (w + ribOffset);
     }
     // normalise so the rib amplitude is in mm even on the corners of a square-ish section
     const len = Math.hypot(bx, by) || 1;

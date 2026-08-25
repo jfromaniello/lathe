@@ -24,6 +24,13 @@ describe("url encoding", () => {
     expect(decodeParams(qs)).toEqual(PRESETS[1].params);
   });
 
+  it("round-trips the rib alignment and ignores unknown values", () => {
+    const qs = encodeParams({ ...DEFAULT_PARAMS, ribAlign: "crest" });
+    expect(qs).toBe("al=crest");
+    expect(decodeParams(qs).ribAlign).toBe("crest");
+    expect(decodeParams("?al=sideways").ribAlign).toBe("center");
+  });
+
   it("tolerates garbage and clamps out-of-range values", () => {
     const p = decodeParams("?h=abc&r=99999&rc=-5&rw=bogus&p=1,2,x&m=nope");
     expect(p.height).toBe(DEFAULT_PARAMS.height);

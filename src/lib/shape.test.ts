@@ -47,6 +47,42 @@ describe("geometry dimensions", () => {
     expect(rMin).toBeCloseTo(38, 1);
   });
 
+  const radialRange = (p: ShapeParams) => {
+    const pos = buildGeometry(low(p)).getAttribute("position").array as Float32Array;
+    let rMax = 0;
+    let rMin = Infinity;
+    for (let i = 0; i < pos.length; i += 3) {
+      const r = Math.hypot(pos[i], pos[i + 1]);
+      if (r < 1e-6) continue;
+      rMax = Math.max(rMax, r);
+      rMin = Math.min(rMin, r);
+    }
+    return { rMin, rMax };
+  };
+  const ribbed: ShapeParams = { ...DEFAULT_PARAMS, mode: "solid", ribAmplitude: 2, ribCount: 12, ribStart: 0, radius: 40, profile: [1, 1, 1, 1, 1, 1, 1] };
+
+  it("crest alignment keeps the rib tops on the base profile (grooves carved inwards)", () => {
+    for (const ribAmplitude of [2, -2]) {
+      const { rMin, rMax } = radialRange({ ...ribbed, ribAmplitude, ribAlign: "crest" });
+      expect(rMax).toBeCloseTo(40, 1);
+      expect(rMin).toBeCloseTo(36, 1);
+    }
+  });
+
+  it("valley alignment keeps the rib bottoms on the base profile (ribs grown outwards)", () => {
+    for (const ribAmplitude of [2, -2]) {
+      const { rMin, rMax } = radialRange({ ...ribbed, ribAmplitude, ribAlign: "valley" });
+      expect(rMax).toBeCloseTo(44, 1);
+      expect(rMin).toBeCloseTo(40, 1);
+    }
+  });
+
+  it("with crest alignment the smooth zone is as wide as the rib crests", () => {
+    const smooth = radialRange({ ...ribbed, ribCount: 0 });
+    const half = radialRange({ ...ribbed, ribStart: 0.5, ribAlign: "crest" });
+    expect(half.rMax).toBeCloseTo(smooth.rMax, 1);
+  });
+
   it("square sections keep the half-width equal to the radius", () => {
     const geo = buildGeometry(low({ ...DEFAULT_PARAMS, ribCount: 0, squareness: 1, radius: 40 }));
     expect(geo.boundingBox!.max.x).toBeCloseTo(40, 1);
