@@ -6,7 +6,7 @@ import ProfileEditor from "./ProfileEditor";
 
 const WAVEFORMS: Waveform[] = ["scallop", "sine", "triangle", "square"];
 const ALIGNS: RibAlign[] = ["center", "crest", "valley"];
-const HOLE_SHAPES: HoleShape[] = ["circle", "follow"];
+const HOLE_SHAPES: HoleShape[] = ["follow", "circle"];
 
 function Slider({
   label,

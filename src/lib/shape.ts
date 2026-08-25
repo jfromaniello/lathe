@@ -51,7 +51,7 @@ export const DEFAULT_PARAMS: ShapeParams = {
   bottom: 1.6,
   top: 0,
   topHole: 20,
-  topHoleShape: "circle",
+  topHoleShape: "follow",
   topDome: 0,
   radialSegments: 256,
   heightSegments: 128,

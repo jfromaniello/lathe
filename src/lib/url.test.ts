@@ -32,10 +32,10 @@ describe("url encoding", () => {
   });
 
   it("round-trips the top hole shape", () => {
-    const qs = encodeParams({ ...DEFAULT_PARAMS, top: 2, topHoleShape: "follow" });
-    expect(qs).toContain("ths=follow");
-    expect(decodeParams(qs).topHoleShape).toBe("follow");
-    expect(decodeParams("?ths=hexagon").topHoleShape).toBe("circle");
+    const qs = encodeParams({ ...DEFAULT_PARAMS, top: 2, topHoleShape: "circle" });
+    expect(qs).toContain("ths=circle");
+    expect(decodeParams(qs).topHoleShape).toBe("circle");
+    expect(decodeParams("?ths=hexagon").topHoleShape).toBe("follow");
   });
 
   it("round-trips the top curvature", () => {
