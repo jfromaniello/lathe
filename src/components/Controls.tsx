@@ -68,6 +68,12 @@ export default function Controls({ params, onChange }: { params: ShapeParams; on
   const t = useT().controls;
   const set = <K extends keyof ShapeParams>(k: K, v: ShapeParams[K]) => onChange({ ...params, [k]: v });
   const isShell = params.mode === "shell";
+  const domeSlider = (
+    <div>
+      <Slider label={t.topDome} value={params.topDome} min={-30} max={30} step={0.5} unit="mm" onChange={(v) => set("topDome", v)} />
+      <p className="mt-1 text-[11px] text-neutral-500">{t.topDomeHint}</p>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -124,13 +130,17 @@ export default function Controls({ params, onChange }: { params: ShapeParams; on
                   </div>
                   {params.topHoleShape === "follow" && <p className="mt-1 text-[11px] text-neutral-500">{t.topHoleFollowHint}</p>}
                 </div>
+                {domeSlider}
               </>
             )}
           </>
         ) : (
-          <p className="text-xs text-neutral-500">
-            {t.solidHint.before} <em>{t.solidHint.em}</em> {t.solidHint.after}
-          </p>
+          <>
+            {domeSlider}
+            <p className="text-xs text-neutral-500">
+              {t.solidHint.before} <em>{t.solidHint.em}</em> {t.solidHint.after}
+            </p>
+          </>
         )}
       </Section>
 

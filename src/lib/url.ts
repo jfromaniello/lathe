@@ -22,6 +22,7 @@ const KEYS: Record<keyof ShapeParams, string> = {
   top: "t",
   topHole: "th",
   topHoleShape: "ths",
+  topDome: "td",
   radialSegments: "seg",
   heightSegments: "hseg",
 };
@@ -97,6 +98,7 @@ export function decodeParams(search: string, base: ShapeParams = DEFAULT_PARAMS)
   p.bottom = num(g("bottom"), 0, 100) ?? p.bottom;
   p.top = num(g("top"), 0, 100) ?? p.top;
   p.topHole = num(g("topHole"), 0, 500) ?? p.topHole;
+  p.topDome = num(g("topDome"), -500, 500) ?? p.topDome;
   return p;
 }
 

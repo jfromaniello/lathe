@@ -18,6 +18,13 @@ describe("buildGeometry produces watertight, outward-facing meshes", () => {
     ["square, twisted, ribs fading in a band", { ...DEFAULT_PARAMS, squareness: 0.8, twist: 120, ribFade: 10, ribStart: 0.2, ribEnd: 0.8 }],
     ["negative amplitude (fluted)", { ...DEFAULT_PARAMS, ribAmplitude: -2, ribCount: 28 }],
     ["no ribs", { ...DEFAULT_PARAMS, ribCount: 0 }],
+    ["domed closed top", { ...DEFAULT_PARAMS, top: 2, topHole: 0, topDome: 12 }],
+    ["dished top with a circular hole", { ...DEFAULT_PARAMS, top: 2, topHole: 15, topDome: -8 }],
+    ["domed top, following hole, square + twist", { ...DEFAULT_PARAMS, squareness: 0.8, twist: 90, top: 2, topHole: 20, topHoleShape: "follow", topDome: 10 }],
+    ["open bottom + domed closed top", { ...DEFAULT_PARAMS, bottom: 0, top: 2, topHole: 0, topDome: 10 }],
+    ["open bottom + dished top with hole", { ...DEFAULT_PARAMS, bottom: 0, top: 2, topHole: 15, topDome: -6 }],
+    ["solid dome", { ...DEFAULT_PARAMS, mode: "solid", topDome: 15 }],
+    ["solid dish", { ...DEFAULT_PARAMS, mode: "solid", topDome: -15 }],
     ["wall thicker than the object falls back to solid", { ...DEFAULT_PARAMS, wall: 60 }],
   ];
   it.each(cases)("%s", (_name, params) => {
@@ -128,6 +135,40 @@ describe("geometry dimensions", () => {
     expect(rMax).toBeCloseTo(20, 3);
   });
 
+  const apexZ = (p: ShapeParams) => {
+    const pos = buildGeometry(low(p)).getAttribute("position").array as Float32Array;
+    let z = -Infinity;
+    for (let i = 0; i < pos.length; i += 3) {
+      if (Math.hypot(pos[i], pos[i + 1]) < 1e-6 && pos[i + 2] > p.height / 2) z = Math.max(z, pos[i + 2]);
+    }
+    return z;
+  };
+
+  it("a dome raises the apex by topDome and keeps the rim at the height", () => {
+    const p: ShapeParams = { ...DEFAULT_PARAMS, top: 2, topHole: 0, topDome: 12, ribCount: 0 };
+    const geo = buildGeometry(low(p));
+    expect(geo.boundingBox!.max.z).toBeCloseTo(192, 3);
+    expect(apexZ(p)).toBeCloseTo(192, 3);
+  });
+
+  it("a dish sinks the apex by topDome below the rim", () => {
+    const p: ShapeParams = { ...DEFAULT_PARAMS, top: 2, topHole: 0, topDome: -12, ribCount: 0 };
+    const geo = buildGeometry(low(p));
+    expect(geo.boundingBox!.max.z).toBeCloseTo(180, 3);
+    expect(apexZ(p)).toBeCloseTo(168, 3);
+  });
+
+  it("the flat rim around the dome is as wide as the wall", () => {
+    const p: ShapeParams = { ...DEFAULT_PARAMS, top: 2, topHole: 0, topDome: 12, ribCount: 0, radius: 40, wall: 2 };
+    const pos = buildGeometry(low(p)).getAttribute("position").array as Float32Array;
+    let rimInner = 0; // largest radius that is still at z = H but not on the outer edge
+    for (let i = 0; i < pos.length; i += 3) {
+      const r = Math.hypot(pos[i], pos[i + 1]);
+      if (Math.abs(pos[i + 2] - p.height) < 1e-4 && r < 39.9) rimInner = Math.max(rimInner, r);
+    }
+    expect(rimInner).toBeCloseTo(38, 2);
+  });
+
   it("square sections keep the half-width equal to the radius", () => {
     const geo = buildGeometry(low({ ...DEFAULT_PARAMS, ribCount: 0, squareness: 1, radius: 40 }));
     expect(geo.boundingBox!.max.x).toBeCloseTo(40, 1);
@@ -161,6 +202,11 @@ describe("profileAt", () => {
 });
 
 describe("sanitize", () => {
+  it("keeps a dish from sinking through the floor", () => {
+    expect(sanitize({ ...DEFAULT_PARAMS, height: 50, top: 2, bottom: 2, topDome: -60 }).topDome).toBeCloseTo(-46 * 0.8, 5);
+    expect(sanitize({ ...DEFAULT_PARAMS, height: 50, top: 2, bottom: 2, topDome: 60 }).topDome).toBe(60);
+  });
+
   it("clamps a following top hole against the inner wall at the top of the profile", () => {
     const base = { ...DEFAULT_PARAMS, radius: 40, wall: 2, top: 2, topHole: 39, topHoleShape: "follow" as const, profile: [1, 1, 1, 1, 1, 1, 1] };
     expect(sanitize({ ...base, ribCount: 0 }).topHole).toBeCloseTo(37, 5);

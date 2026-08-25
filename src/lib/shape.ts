@@ -27,6 +27,7 @@ export interface ShapeParams {
   top: number; // mm thickness, 0 = open
   topHole: number; // mm radius (half-width) of hole in the top (when top > 0)
   topHoleShape: HoleShape;
+  topDome: number; // mm the top plate bulges at its centre: + convex (dome), - concave (dish), 0 = flat
   radialSegments: number;
   heightSegments: number;
 }
@@ -51,6 +52,7 @@ export const DEFAULT_PARAMS: ShapeParams = {
   top: 0,
   topHole: 20,
   topHoleShape: "circle",
+  topDome: 0,
   radialSegments: 256,
   heightSegments: 128,
 };
@@ -216,11 +218,12 @@ function zStations(z0: number, z1: number, count: number, extras: number[]) {
 
 // ---------- mesh construction ----------
 
-type NodeKind = "outer" | "inner" | "hole" | "fixed" | "center";
+type NodeKind = "outer" | "inner" | "hole" | "fixed" | "center" | "dome";
 interface Node {
   kind: NodeKind;
   z: number;
   r?: number; // for 'fixed'
+  rho?: number; // for 'dome': 1 = where the dome starts (inner wall line), 0 = centre
   surface: string; // vertices are shared only within the same surface (smooth normals inside, sharp edges between)
 }
 
@@ -253,6 +256,9 @@ export function sanitize(p: ShapeParams): ShapeParams {
     out.bottom = Math.min(out.bottom, out.height * 0.4);
     out.top = Math.min(out.top, out.height * 0.4);
   }
+  // a dish must not sink through the floor (shell: the ceiling follows the dish)
+  const domeRoom = out.mode === "solid" ? out.height : out.height - out.top - out.bottom;
+  if (out.topDome < 0) out.topDome = Math.max(out.topDome, -Math.max(0, domeRoom * 0.8));
   return out;
 }
 
@@ -281,6 +287,28 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
   const ze = p.ribEnd * H;
   const hasRibs = p.ribCount > 0 && p.ribAmplitude !== 0;
   const ribOffset = p.ribAlign === "crest" ? -1 : p.ribAlign === "valley" ? 1 : 0;
+
+  // --- top plate: flat rim as wide as the wall, then a spherical cap (dome or dish) down to the hole / centre ---
+  const hasHole = p.mode === "shell" && p.top > 0 && p.topHole > 0.01;
+  const holeKind: NodeKind = p.topHoleShape === "follow" ? "hole" : "fixed";
+  const rimW = p.mode === "shell" ? p.wall : 0;
+  const hasDome = (p.mode === "solid" || p.top > 0) && Math.abs(p.topDome) >= 0.01;
+  const domeA = Math.max(1, p.radius * profileAt(p.profile, 1) - rimW); // mean radius where the cap starts (mm)
+  const rhoH = hasHole ? Math.min(0.999, p.topHole / domeA) : 0;
+  /** Height of the cap above the flat rim at normalised radius rho (1 = rim, 0 = centre). */
+  const domeZ = (rho: number) => {
+    if (!hasDome) return 0;
+    const d = Math.abs(p.topDome);
+    const rc = (domeA * domeA + d * d) / (2 * d); // sphere radius through the rim circle and the apex
+    const r = rho * domeA;
+    return Math.sign(p.topDome) * (Math.sqrt(Math.max(0, rc * rc - r * r)) - (rc - d));
+  };
+  const DOME_STEPS = 24;
+  /** Rings from the rim (rho = 1) towards the hole/centre; the hole/centre node itself is added by the caller. */
+  const domeRings = (zBase: number, surface: string): Node[] =>
+    hasDome
+      ? Array.from({ length: DOME_STEPS }, (_, k) => ({ kind: "dome" as const, z: zBase, rho: 1 - (1 - rhoH) * (k / DOME_STEPS), surface }))
+      : [];
 
   const envelope = (z: number) => {
     if (!hasRibs) return 0;
@@ -311,36 +339,51 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
   const outerWall = (): Node[] =>
     zStations(0, H, p.heightSegments, extras).map((z) => ({ kind: "outer", z, surface: "outer" }));
 
+  const zi1 = H - p.top;
+  /** Outer edge at H → flat rim → cap → hole edge / apex. */
+  const topFace = (): Node[] => {
+    const nodes: Node[] = [{ kind: "outer", z: H, surface: "top" }];
+    if (hasDome) {
+      const rings = domeRings(H, "dome");
+      if (rimW > 0) nodes.push({ ...rings[0], surface: "top" }); // crease where the flat rim meets the cap
+      else rings.shift(); // no rim: the cap starts right at the outer edge
+      nodes.push(...rings);
+    }
+    const surface = hasDome ? "dome" : "top";
+    if (hasHole) nodes.push({ kind: holeKind, z: H + domeZ(rhoH), r: p.topHole, surface });
+    else nodes.push({ kind: "center", z: H + domeZ(0), surface });
+    return nodes;
+  };
+  /** Hole edge / apex of the ceiling → cap (same curve, offset by the plate thickness) → inner wall at zi1. */
+  const ceilingFace = (): Node[] => {
+    const nodes: Node[] = hasHole
+      ? [{ kind: holeKind, z: zi1 + domeZ(rhoH), r: p.topHole, surface: "ceiling" }]
+      : [{ kind: "center", z: zi1 + domeZ(0), surface: "ceiling" }];
+    nodes.push(...domeRings(zi1, "ceiling").slice(1).reverse()); // rho = 1 coincides with inner@zi1
+    nodes.push({ kind: "inner", z: zi1, surface: "ceiling" });
+    return nodes;
+  };
+
   if (p.mode === "solid") {
-    loops.push([
-      { kind: "center", z: 0, surface: "bottom" },
-      { kind: "outer", z: 0, surface: "bottom" },
-      ...outerWall(),
-      { kind: "outer", z: H, surface: "top" },
-      { kind: "center", z: H, surface: "top" },
-    ]);
+    loops.push([{ kind: "center", z: 0, surface: "bottom" }, { kind: "outer", z: 0, surface: "bottom" }, ...outerWall(), ...topFace()]);
   } else {
     const zi0 = p.bottom;
-    const zi1 = H - p.top;
     const innerWallDown = (): Node[] =>
       zStations(zi0, zi1, p.heightSegments, extras)
         .reverse()
         .map((z) => ({ kind: "inner", z, surface: "inner" }));
-    const hasHole = p.top > 0 && p.topHole > 0.01;
-    const holeKind: NodeKind = p.topHoleShape === "follow" ? "hole" : "fixed";
 
     // top section (from outer@H down to inner@zi1)
     const topNodes: Node[] = [];
     if (p.top <= 0) {
       topNodes.push({ kind: "outer", z: H, surface: "rim" }, { kind: "inner", z: H, surface: "rim" });
     } else if (hasHole) {
+      const dzh = domeZ(rhoH);
       topNodes.push(
-        { kind: "outer", z: H, surface: "topface" },
-        { kind: holeKind, z: H, r: p.topHole, surface: "topface" },
-        { kind: holeKind, z: H, r: p.topHole, surface: "holewall" },
-        { kind: holeKind, z: zi1, r: p.topHole, surface: "holewall" },
-        { kind: holeKind, z: zi1, r: p.topHole, surface: "ceiling" },
-        { kind: "inner", z: zi1, surface: "ceiling" },
+        ...topFace(),
+        { kind: holeKind, z: H + dzh, r: p.topHole, surface: "holewall" },
+        { kind: holeKind, z: zi1 + dzh, r: p.topHole, surface: "holewall" },
+        ...ceilingFace(),
       );
     }
     const bottomNodesEnd: Node[] = [];
@@ -354,36 +397,20 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
     }
 
     if (p.top > 0 && !hasHole) {
-      // fully closed top: the cavity is a separate (inverted) loop
-      loops.push([
-        ...bottomNodesStart,
-        ...outerWall(),
-        { kind: "outer", z: H, surface: "top" },
-        { kind: "center", z: H, surface: "top" },
-      ]);
-      const cavity: Node[] = [
-        { kind: "center", z: zi1, surface: "ceiling" },
-        { kind: "inner", z: zi1, surface: "ceiling" },
-        ...innerWallDown(),
-        ...(p.bottom > 0
-          ? bottomNodesEnd
-          : [{ kind: "inner", z: 0, surface: "brim" } as Node, { kind: "outer", z: 0, surface: "brim" } as Node]),
-      ];
       if (p.bottom <= 0) {
-        // open bottom + closed top: it's actually one loop; rebuild as such
-        loops.length = 0;
+        // open bottom + closed top: a single loop
         loops.push([
           { kind: "outer", z: 0, surface: "brim" },
           ...outerWall(),
-          { kind: "outer", z: H, surface: "top" },
-          { kind: "center", z: H, surface: "top" },
-          { kind: "center", z: zi1, surface: "ceiling" },
-          { kind: "inner", z: zi1, surface: "ceiling" },
+          ...topFace(),
+          ...ceilingFace(),
           ...innerWallDown(),
           { kind: "inner", z: 0, surface: "brim" },
         ]);
       } else {
-        loops.push(cavity);
+        // fully closed: the cavity is a separate (inverted) loop
+        loops.push([...bottomNodesStart, ...outerWall(), ...topFace()]);
+        loops.push([...ceilingFace(), ...innerWallDown(), ...bottomNodesEnd]);
       }
     } else {
       loops.push([...bottomNodesStart, ...outerWall(), ...topNodes, ...innerWallDown(), ...bottomNodesEnd]);
@@ -417,6 +444,36 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
       const r = node.r ?? 0;
       for (let i = 0; i < R; i++) positions.push(r * cosT[i], r * sinT[i], node.z);
       return { start, center: false, key: `f:${r.toFixed(5)}:${node.z.toFixed(5)}` };
+    }
+    if (node.kind === "dome") {
+      // ring of the cap: each column blends from the rim line (inner wall at zBase) towards the hole edge / centre
+      const rho = node.rho ?? 1;
+      const zb = node.z;
+      const env = envelope(zb);
+      const rot = twistRad * (zb / H);
+      const t = (1 - rho) / (1 - rhoH);
+      const rotH = twistRad * ((zb + domeZ(rhoH)) / H);
+      const z = zb + domeZ(rho);
+      for (let i = 0; i < R; i++) {
+        const [bx, by] = superellipse(thetas[i] + rot, n);
+        const s1 = Math.max(0.3, outerScale(i / R, zb, env, bx, by) - rimW);
+        const x1 = bx * s1;
+        const y1 = by * s1;
+        let xh = 0;
+        let yh = 0;
+        if (hasHole) {
+          if (holeKind === "fixed") {
+            xh = p.topHole * cosT[i];
+            yh = p.topHole * sinT[i];
+          } else {
+            const [hx, hy] = superellipse(thetas[i] + rotH, n);
+            xh = hx * p.topHole;
+            yh = hy * p.topHole;
+          }
+        }
+        positions.push(x1 + (xh - x1) * t, y1 + (yh - y1) * t, z);
+      }
+      return { start, center: false, key: `d:${zb.toFixed(5)}:${rho.toFixed(6)}` };
     }
     const z = node.z;
     const env = envelope(z);
@@ -491,7 +548,7 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
 }
 
 function sameNode(a: Node, b: Node) {
-  return a.kind === b.kind && Math.abs(a.z - b.z) < 1e-6 && (a.r ?? 0) === (b.r ?? 0);
+  return a.kind === b.kind && Math.abs(a.z - b.z) < 1e-6 && (a.r ?? 0) === (b.r ?? 0) && (a.rho ?? 0) === (b.rho ?? 0);
 }
 
 export function bounds(geo: THREE.BufferGeometry) {

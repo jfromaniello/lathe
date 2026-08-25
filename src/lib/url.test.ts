@@ -38,6 +38,10 @@ describe("url encoding", () => {
     expect(decodeParams("?ths=hexagon").topHoleShape).toBe("circle");
   });
 
+  it("round-trips the top curvature", () => {
+    expect(decodeParams(encodeParams({ ...DEFAULT_PARAMS, topDome: -7.5 })).topDome).toBe(-7.5);
+  });
+
   it("tolerates garbage and clamps out-of-range values", () => {
     const p = decodeParams("?h=abc&r=99999&rc=-5&rw=bogus&p=1,2,x&m=nope");
     expect(p.height).toBe(DEFAULT_PARAMS.height);
