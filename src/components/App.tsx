@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type * as THREE from "three";
+import * as THREE from "three";
 import Controls from "@/components/Controls";
 import Gallery from "@/components/Gallery";
 import PatternPicker from "@/components/PatternPicker";
@@ -9,8 +9,8 @@ import HistoryStrip from "@/components/HistoryStrip";
 import ShareButton from "@/components/ShareButton";
 import Viewer from "@/components/Viewer";
 import { COLORS, DEFAULT_VIEW, type MaterialKind, type ViewSettings } from "@/lib/view";
-import { DEFAULT_PARAMS, bounds, type ShapeParams } from "@/lib/shape";
-import { downloadBlob, makeSTL } from "@/lib/export";
+import { DEFAULT_PARAMS, hasSplit, sanitize, type ShapeParams } from "@/lib/shape";
+import { downloadBlob, make3MFParts, makeSTL, makeSTLParts } from "@/lib/export";
 import { decodeParams, decodeView, encodeAll } from "@/lib/url";
 import { useHistory } from "@/hooks/useHistory";
 import { useT } from "@/i18n/context";
@@ -49,22 +49,47 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [history]);
 
-  const onGeometry = useCallback((g: THREE.BufferGeometry) => {
-    const b = bounds(g);
-    setStats({ tris: (g.index?.count ?? 0) / 3, ...b });
+  const onGeometry = useCallback((gs: THREE.BufferGeometry[]) => {
+    const box = new THREE.Box3();
+    let tris = 0;
+    for (const g of gs) {
+      g.computeBoundingBox();
+      box.union(g.boundingBox!);
+      tris += (g.index?.count ?? 0) / 3;
+    }
+    const size = box.getSize(new THREE.Vector3());
+    setStats({ tris, x: size.x, y: size.y, z: size.z });
   }, []);
 
-  const exportSTL = () => {
+  const split = hasSplit(sanitize(params));
+  const baseName = `lathe-${Math.round(params.height)}x${Math.round(params.radius * 2)}`;
+  const runExport = (job: () => void) => {
     setExporting(true);
     setTimeout(() => {
       try {
-        const blob = makeSTL(params);
-        downloadBlob(blob, `lathe-${Math.round(params.height)}x${Math.round(params.radius * 2)}.stl`);
+        job();
       } finally {
         setExporting(false);
       }
     }, 20);
   };
+  const exportMain = () =>
+    runExport(() => {
+      if (split) {
+        const blob = make3MFParts(params, baseName);
+        if (blob) downloadBlob(blob, `${baseName}-2parts.3mf`);
+      } else {
+        downloadBlob(makeSTL(params), `${baseName}.stl`);
+      }
+    });
+  const exportSTLParts = () =>
+    runExport(() => {
+      const parts = makeSTLParts(params);
+      if (!parts) return;
+      downloadBlob(parts.body, `${baseName}-body.stl`);
+      // a second automatic download right away gets blocked by some browsers
+      setTimeout(() => downloadBlob(parts.top, `${baseName}-top.stl`), 400);
+    });
 
   const setV = <K extends keyof ViewSettings>(k: K, v: ViewSettings[K]) => setView((s) => ({ ...s, [k]: v }));
 
@@ -104,12 +129,17 @@ export default function App() {
             </div>
           )}
           <button
-            onClick={exportSTL}
+            onClick={exportMain}
             disabled={exporting}
             className="w-full rounded-md bg-amber-500 px-3 py-2 text-sm font-medium text-black hover:bg-amber-400 disabled:opacity-60"
           >
-            {exporting ? t.app.generating : t.app.exportStl}
+            {exporting ? t.app.generating : split ? t.app.export3mf : t.app.exportStl}
           </button>
+          {split && (
+            <button onClick={exportSTLParts} disabled={exporting} className="mt-1.5 w-full text-xs text-neutral-400 hover:text-neutral-200 disabled:opacity-60">
+              {t.app.exportStlParts}
+            </button>
+          )}
         </div>
       </aside>
 
@@ -149,6 +179,15 @@ export default function App() {
             >
               {t.viewer.handles}
             </button>
+            {split && (
+              <button
+                onClick={() => setV("exploded", !view.exploded)}
+                className={`rounded-lg px-2 py-0.5 text-[11px] font-medium transition md:px-2.5 md:py-1 md:text-xs ${view.exploded ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"}`}
+                title={t.viewer.explodedHint}
+              >
+                {t.viewer.exploded}
+              </button>
+            )}
             <button
               onClick={() => setV("showMug", !view.showMug)}
               className={`rounded-lg px-2 py-0.5 text-[11px] font-medium transition md:px-2.5 md:py-1 md:text-xs ${view.showMug ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-black/5"}`}

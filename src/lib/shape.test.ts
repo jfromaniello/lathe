@@ -1,5 +1,6 @@
+import type * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { buildGeometry, DEFAULT_PARAMS, effectiveRadialSegments, PRESETS, profileAt, sanitize, wallRange, type ShapeParams } from "./shape";
+import { buildGeometry, buildParts, DEFAULT_PARAMS, effectiveRadialSegments, PRESETS, profileAt, sanitize, wallRange, type ShapeParams } from "./shape";
 import { analyzeMesh, isWatertight } from "@/test/mesh";
 
 const low = (p: ShapeParams): ShapeParams => ({ ...p, radialSegments: 96, heightSegments: 40 });
@@ -32,6 +33,60 @@ describe("buildGeometry produces watertight, outward-facing meshes", () => {
   it.each(cases)("%s", (_name, params) => {
     const report = analyzeMesh(buildGeometry(low(params)));
     expect(report, JSON.stringify(report)).toSatisfy(isWatertight);
+  });
+});
+
+describe("two pieces", () => {
+  const cases: [string, ShapeParams][] = [
+    ["ribs ending at the cut", { ...DEFAULT_PARAMS, ribEnd: 0.89, split: 0.89 }],
+    ["dished top with a following hole, square + twist", { ...DEFAULT_PARAMS, squareness: 0.7, twist: 60, top: 1.2, topHole: 30, topDome: -10, split: 0.85 }],
+    ["closed top, open bottom", { ...DEFAULT_PARAMS, bottom: 0, top: 2, topHole: 0, split: 0.7 }],
+    ["open top (a collar)", { ...DEFAULT_PARAMS, top: 0, split: 0.8 }],
+    ["ribs inside", { ...DEFAULT_PARAMS, innerRib: 1, split: 0.5 }],
+    ["cut through the rib fade", { ...DEFAULT_PARAMS, ribStart: 0.2, ribEnd: 0.9, ribFade: 10, split: 0.88 }],
+  ];
+  it.each(cases)("both pieces are watertight: %s", (_name, params) => {
+    const parts = buildParts(low(params));
+    expect(parts).not.toBeNull();
+    expect(analyzeMesh(parts!.body), "body").toSatisfy(isWatertight);
+    expect(analyzeMesh(parts!.top), "top").toSatisfy(isWatertight);
+  });
+
+  it("the top's skirt clears the body's neck by the gap", () => {
+    const p = sanitize(low({ ...DEFAULT_PARAMS, ribCount: 0, radius: 40, wall: 1.2, split: 0.8, splitLip: 6, splitGap: 0.2, profile: [1, 1, 1, 1, 1, 1, 1] }));
+    const parts = buildParts(p)!;
+    const zMid = p.split * p.height + p.splitLip / 2;
+    const radiiNear = (geo: THREE.BufferGeometry) => {
+      const pos = geo.getAttribute("position").array as Float32Array;
+      const rs: number[] = [];
+      for (let i = 0; i < pos.length; i += 3) if (Math.abs(pos[i + 2] - zMid) < p.splitLip / 2 - 0.5) rs.push(Math.hypot(pos[i], pos[i + 1]));
+      return rs;
+    };
+    const neck = radiiNear(parts.body);
+    const skirt = radiiNear(parts.top);
+    expect(neck.length).toBeGreaterThan(0);
+    expect(skirt.length).toBeGreaterThan(0);
+    expect(Math.max(...neck)).toBeCloseTo(40 - 1.2 - 0.2, 2); // neck outer = inner wall − gap
+    expect(Math.min(...neck)).toBeCloseTo(40 - 1.2 - 0.2 - 1.2, 2); // neck keeps the full wall thickness
+    expect(Math.min(...skirt)).toBeCloseTo(40 - 1.2, 2); // skirt inner = inner wall
+    expect(Math.max(...skirt)).toBeCloseTo(40, 2);
+  });
+
+  it("the assembled preview spans the same height as one piece", () => {
+    const one = buildGeometry(low({ ...DEFAULT_PARAMS, top: 2 }));
+    const two = buildGeometry(low({ ...DEFAULT_PARAMS, top: 2, split: 0.8 }));
+    expect(two.boundingBox!.max.z).toBeCloseTo(one.boundingBox!.max.z, 4);
+    expect(two.boundingBox!.max.x).toBeCloseTo(one.boundingBox!.max.x, 4);
+  });
+
+  it("sanitize keeps the joint between floor and ceiling and drops impossible splits", () => {
+    const base = { ...DEFAULT_PARAMS, height: 100, bottom: 2, top: 2, wall: 1.2, splitLip: 6, splitGap: 0.2 };
+    expect(sanitize({ ...base, split: 0.99 }).split * 100).toBeCloseTo(100 - 2 - 6 - 0.5, 5);
+    expect(sanitize({ ...base, split: 0.01 }).split * 100).toBeCloseTo(2 + 1.2 + 0.2 + 1, 5);
+    expect(sanitize({ ...base, split: 0.5, mode: "solid" }).split).toBe(0);
+    expect(sanitize({ ...base, split: 0.5, height: 12 }).split).toBe(0);
+    expect(sanitize({ ...base, split: 0.5, radius: 3, ribCount: 0 }).split).toBe(0);
+    expect(buildParts({ ...base, split: 0.5, mode: "solid" })).toBeNull();
   });
 });
 

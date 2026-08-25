@@ -4,34 +4,38 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, ContactShadows, Environment, Lightformer, Html } from "@react-three/drei";
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
-import { buildGeometry, type ShapeParams } from "@/lib/shape";
+import { buildGeometry, buildParts, type ShapeParams } from "@/lib/shape";
 import Handles from "./Handles";
 
 import { renderColor, type ViewSettings } from "@/lib/view";
 import { useT } from "@/i18n/context";
 
-function Model({ params, view, onGeometry }: { params: ShapeParams; view: ViewSettings; onGeometry?: (g: THREE.BufferGeometry) => void }) {
-  const geometry = useMemo(() => buildGeometry(params), [params]);
+function Material({ view }: { view: ViewSettings }) {
+  if (view.material === "matte") return <meshStandardMaterial color={view.color} roughness={0.78} metalness={0} side={THREE.DoubleSide} />;
+  if (view.material === "wood") return <meshStandardMaterial color={renderColor(view)} roughness={0.65} metalness={0} side={THREE.DoubleSide} />;
+  return <meshPhysicalMaterial color={view.color} roughness={0.35} transmission={0.82} thickness={4} ior={1.4} side={THREE.DoubleSide} />;
+}
+
+function Model({ params, view, onGeometry }: { params: ShapeParams; view: ViewSettings; onGeometry?: (g: THREE.BufferGeometry[]) => void }) {
+  // a split design is rendered as its two pieces so they can be shown apart
+  const geometries = useMemo(() => {
+    const parts = buildParts(params);
+    return parts ? [parts.body, parts.top] : [buildGeometry(params)];
+  }, [params]);
   useEffect(() => {
-    onGeometry?.(geometry);
-    return () => geometry.dispose();
-  }, [geometry, onGeometry]);
+    onGeometry?.(geometries);
+    return () => geometries.forEach((g) => g.dispose());
+  }, [geometries, onGeometry]);
+  const lift = view.exploded && geometries.length > 1 ? params.splitLip + 12 : 0;
 
   return (
-    <mesh geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow>
-      {view.material === "matte" && <meshStandardMaterial color={view.color} roughness={0.78} metalness={0} side={THREE.DoubleSide} />}
-      {view.material === "wood" && <meshStandardMaterial color={renderColor(view)} roughness={0.65} metalness={0} side={THREE.DoubleSide} />}
-      {view.material === "glass" && (
-        <meshPhysicalMaterial
-          color={view.color}
-          roughness={0.35}
-          transmission={0.82}
-          thickness={4}
-          ior={1.4}
-          side={THREE.DoubleSide}
-        />
-      )}
-    </mesh>
+    <group rotation={[-Math.PI / 2, 0, 0]}>
+      {geometries.map((g, i) => (
+        <mesh key={i} geometry={g} position={[0, 0, i === 1 ? lift : 0]} castShadow receiveShadow>
+          <Material view={view} />
+        </mesh>
+      ))}
+    </group>
   );
 }
 
@@ -83,7 +87,7 @@ export default function Viewer({
   params: ShapeParams;
   view: ViewSettings;
   onChange: (p: ShapeParams) => void;
-  onGeometry?: (g: THREE.BufferGeometry) => void;
+  onGeometry?: (g: THREE.BufferGeometry[]) => void;
 }) {
   const h = params.height;
   const r = params.radius;

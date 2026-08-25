@@ -5,6 +5,7 @@ export interface ViewSettings {
   color: string; // hex
   showMug: boolean;
   showHandles: boolean;
+  exploded: boolean; // show the two pieces of a split design apart
 }
 
 export const MATERIALS: MaterialKind[] = ["matte", "wood", "glass"];
@@ -22,7 +23,7 @@ export const COLORS: { id: ColorId; name: string; hex: string }[] = [
 
 export const WOOD_COLOR = "#b58a5c";
 
-export const DEFAULT_VIEW: ViewSettings = { material: "matte", color: COLORS[0].hex, showMug: false, showHandles: true };
+export const DEFAULT_VIEW: ViewSettings = { material: "matte", color: COLORS[0].hex, showMug: false, showHandles: true, exploded: false };
 
 /** Color the model is actually rendered with (wood ignores the palette). */
 export function renderColor(v: Pick<ViewSettings, "material" | "color">): string {

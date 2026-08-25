@@ -42,6 +42,13 @@ describe("url encoding", () => {
     expect(decodeParams(encodeParams({ ...DEFAULT_PARAMS, topDome: -7.5 })).topDome).toBe(-7.5);
   });
 
+  it("round-trips the two-piece settings", () => {
+    const p = { ...DEFAULT_PARAMS, split: 0.85, splitLip: 8, splitGap: 0.3 };
+    const qs = encodeParams(p);
+    expect(qs).toBe("sp=0.85&sl=8&sg=0.3");
+    expect(decodeParams(qs)).toEqual(p);
+  });
+
   it("tolerates garbage and clamps out-of-range values", () => {
     const p = decodeParams("?h=abc&r=99999&rc=-5&rw=bogus&p=1,2,x&m=nope");
     expect(p.height).toBe(DEFAULT_PARAMS.height);

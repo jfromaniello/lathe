@@ -1,6 +1,6 @@
 "use client";
 
-import { effectiveRadialSegments, wallRange, type ShapeParams, type Waveform, type Mode, type RibAlign, type HoleShape } from "@/lib/shape";
+import { effectiveRadialSegments, hasSplit, sanitize, wallRange, type ShapeParams, type Waveform, type Mode, type RibAlign, type HoleShape } from "@/lib/shape";
 import { useT } from "@/i18n/context";
 import ProfileEditor from "./ProfileEditor";
 
@@ -157,6 +157,30 @@ export default function Controls({ params, onChange }: { params: ShapeParams; on
           </>
         )}
       </Section>
+
+      {isShell && (
+        <Section title={t.split} open={params.split > 0}>
+          <div className="flex gap-1 rounded bg-neutral-800 p-1 text-xs">
+            {[false, true].map((two) => (
+              <button
+                key={String(two)}
+                className={`flex-1 rounded px-2 py-1 ${params.split > 0 === two ? "bg-amber-500 text-black" : "text-neutral-300 hover:bg-neutral-700"}`}
+                onClick={() => set("split", two ? (params.ribEnd > 0.05 && params.ribEnd < 0.95 ? params.ribEnd : 0.8) : 0)}
+              >
+                {two ? t.splitTwo : t.splitOne}
+              </button>
+            ))}
+          </div>
+          {params.split > 0 && (
+            <>
+              <Slider label={t.splitAt} value={Math.round(params.split * params.height * 2) / 2} min={5} max={params.height - 5} step={0.5} unit="mm" onChange={(v) => set("split", Math.min(1, Math.max(0.01, v / params.height)))} />
+              <Slider label={t.splitLip} value={params.splitLip} min={2} max={20} step={0.5} unit="mm" onChange={(v) => set("splitLip", v)} />
+              <Slider label={t.splitGap} value={params.splitGap} min={0} max={1} step={0.05} unit="mm" onChange={(v) => set("splitGap", v)} />
+              <p className="text-[11px] text-neutral-500">{hasSplit(sanitize(params)) ? t.splitHint : t.splitImpossible}</p>
+            </>
+          )}
+        </Section>
+      )}
 
       <Section title={t.advancedPattern} open={false}>
         <Slider label={t.ribCount} value={params.ribCount} min={0} max={200} onChange={(v) => set("ribCount", v)} />

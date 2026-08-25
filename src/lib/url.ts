@@ -24,6 +24,9 @@ const KEYS: Record<keyof ShapeParams, string> = {
   topHole: "th",
   topHoleShape: "ths",
   topDome: "td",
+  split: "sp",
+  splitLip: "sl",
+  splitGap: "sg",
   radialSegments: "seg",
   heightSegments: "hseg",
 };
@@ -101,6 +104,9 @@ export function decodeParams(search: string, base: ShapeParams = DEFAULT_PARAMS)
   p.top = num(g("top"), 0, 100) ?? p.top;
   p.topHole = num(g("topHole"), 0, 500) ?? p.topHole;
   p.topDome = num(g("topDome"), -500, 500) ?? p.topDome;
+  p.split = num(g("split"), 0, 1) ?? p.split;
+  p.splitLip = num(g("splitLip"), 1, 100) ?? p.splitLip;
+  p.splitGap = num(g("splitGap"), 0, 5) ?? p.splitGap;
   return p;
 }
 

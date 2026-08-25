@@ -29,6 +29,9 @@ export interface ShapeParams {
   topHole: number; // mm radius (half-width) of hole in the top (when top > 0)
   topHoleShape: HoleShape;
   topDome: number; // mm the top plate bulges at its centre: + convex (dome), - concave (dish), 0 = flat
+  split: number; // 0 = one piece; else fraction of the height where the shell is cut in two pieces (shell only)
+  splitLip: number; // mm height of the neck on the body that the top slides over
+  splitGap: number; // mm clearance between the neck and the top
   radialSegments: number;
   heightSegments: number;
 }
@@ -55,6 +58,9 @@ export const DEFAULT_PARAMS: ShapeParams = {
   topHole: 20,
   topHoleShape: "follow",
   topDome: 0,
+  split: 0,
+  splitLip: 6,
+  splitGap: 0.2,
   radialSegments: 256,
   heightSegments: 128,
 };
@@ -221,12 +227,13 @@ function zStations(z0: number, z1: number, count: number, extras: number[]) {
 
 // ---------- mesh construction ----------
 
-type NodeKind = "outer" | "inner" | "hole" | "fixed" | "center" | "dome";
+type NodeKind = "outer" | "inner" | "offset" | "hole" | "fixed" | "center" | "dome";
 interface Node {
   kind: NodeKind;
   z: number;
   r?: number; // for 'fixed'
   rho?: number; // for 'dome': 1 = where the dome starts (inner wall line), 0 = centre
+  off?: number; // for 'offset': mm inwards from the inner surface (neck of a two-piece joint)
   surface: string; // vertices are shared only within the same surface (smooth normals inside, sharp edges between)
 }
 
@@ -269,6 +276,17 @@ export function sanitize(p: ShapeParams): ShapeParams {
   // a dish must not sink through the floor (shell: the ceiling follows the dish)
   const domeRoom = out.mode === "solid" ? out.height : out.height - out.top - out.bottom;
   if (out.topDome < 0) out.topDome = Math.max(out.topDome, -Math.max(0, domeRoom * 0.8));
+  // two pieces: the neck (and the chamfer below it) must fit between floor and ceiling and leave a cavity
+  out.split = Math.min(1, Math.max(0, out.split));
+  if (out.mode !== "shell" || out.split <= 0) {
+    out.split = 0;
+  } else {
+    const lo = out.bottom + out.wall + out.splitGap + 1;
+    const hi = out.height - out.top - out.splitLip - 0.5;
+    const cavity = out.radius * minProfile - ribDepthBelowBase(out) - 2 * out.wall - out.splitGap;
+    if (hi <= lo || cavity < 1) out.split = 0;
+    else out.split = Math.min(hi, Math.max(lo, out.split * out.height)) / out.height;
+  }
   return out;
 }
 
@@ -285,8 +303,46 @@ export function effectiveRadialSegments(p: ShapeParams, minPerRib = 6): number {
   return wanted;
 }
 
+export type Part = "whole" | "body" | "top";
+
+/** Is the (sanitized) design cut in two pieces? */
+export function hasSplit(p: ShapeParams): boolean {
+  return p.mode === "shell" && p.split > 0;
+}
+
+/** Preview / single-file geometry: the whole object, or both pieces assembled in place. */
 export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
   const p = sanitize(input);
+  if (!hasSplit(p)) return build(p, "whole");
+  return mergeGeometries([build(p, "body"), build(p, "top")]);
+}
+
+/** The two pieces of a split design, or null when it is a single piece. */
+export function buildParts(input: ShapeParams): { body: THREE.BufferGeometry; top: THREE.BufferGeometry } | null {
+  const p = sanitize(input);
+  if (!hasSplit(p)) return null;
+  return { body: build(p, "body"), top: build(p, "top") };
+}
+
+export function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (const g of geos) {
+    const base = positions.length / 3;
+    const pos = g.getAttribute("position").array;
+    for (let i = 0; i < pos.length; i++) positions.push(pos[i]);
+    const idx = g.index!.array;
+    for (let i = 0; i < idx.length; i++) indices.push(idx[i] + base);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  geo.computeBoundingBox();
+  return geo;
+}
+
+function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
   const H = p.height;
   const R = effectiveRadialSegments(p);
   const n = 2 + p.squareness * 10;
@@ -355,8 +411,9 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
 
   // --- build loops of nodes ---
   const loops: Node[][] = [];
-  const outerWall = (): Node[] =>
-    zStations(0, H, p.heightSegments, extras).map((z) => ({ kind: "outer", z, surface: "outer" }));
+  const segs = (z0: number, z1: number) => Math.max(2, Math.round((p.heightSegments * (z1 - z0)) / H));
+  const outerWall = (z0: number, z1: number): Node[] =>
+    zStations(z0, z1, segs(z0, z1), extras).map((z) => ({ kind: "outer", z, surface: "outer" }));
 
   const zi1 = H - p.top;
   /** Outer edge at H → flat rim → cap → hole edge / apex. */
@@ -384,26 +441,32 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
   };
 
   if (p.mode === "solid") {
-    loops.push([{ kind: "center", z: 0, surface: "bottom" }, { kind: "outer", z: 0, surface: "bottom" }, ...outerWall(), ...topFace()]);
+    loops.push([{ kind: "center", z: 0, surface: "bottom" }, { kind: "outer", z: 0, surface: "bottom" }, ...outerWall(0, H), ...topFace()]);
   } else {
     const zi0 = p.bottom;
-    const innerWallDown = (): Node[] =>
-      zStations(zi0, zi1, p.heightSegments, extras)
+    const innerWallDown = (z0: number, z1: number): Node[] =>
+      zStations(z0, z1, segs(z0, z1), extras)
         .reverse()
         .map((z) => ({ kind: "inner", z, surface: "inner" }));
 
-    // top section (from outer@H down to inner@zi1)
-    const topNodes: Node[] = [];
+    // top section: from outer@H down to inner@zi1
+    let topSection: Node[];
     if (p.top <= 0) {
-      topNodes.push({ kind: "outer", z: H, surface: "rim" }, { kind: "inner", z: H, surface: "rim" });
+      topSection = [
+        { kind: "outer", z: H, surface: "rim" },
+        { kind: "inner", z: H, surface: "rim" },
+      ];
     } else if (hasHole) {
       const dzh = domeZ(rhoH);
-      topNodes.push(
+      topSection = [
         ...topFace(),
         { kind: holeKind, z: H + dzh, r: p.topHole, surface: "holewall" },
         { kind: holeKind, z: zi1 + dzh, r: p.topHole, surface: "holewall" },
         ...ceilingFace(),
-      );
+      ];
+    } else {
+      // closed top: the cavity is its own closed surface; centre→centre pairs are simply not stitched
+      topSection = [...topFace(), ...ceilingFace()];
     }
     const bottomNodesEnd: Node[] = [];
     const bottomNodesStart: Node[] = [];
@@ -415,24 +478,42 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
       bottomNodesEnd.push({ kind: "inner", z: zi0, surface: "floor" }, { kind: "center", z: zi0, surface: "floor" });
     }
 
-    if (p.top > 0 && !hasHole) {
-      if (p.bottom <= 0) {
-        // open bottom + closed top: a single loop
+    if (part === "whole") {
+      loops.push([...bottomNodesStart, ...outerWall(0, H), ...topSection, ...innerWallDown(zi0, zi1), ...bottomNodesEnd]);
+    } else {
+      // two pieces: the body ends in a neck set in by (wall + gap) that the top's skirt slides over
+      const zs = p.split * H;
+      const L = p.splitLip;
+      const g = p.splitGap;
+      const c = p.wall + g; // neck inset, also the height of the 45° chamfer inside the body
+      if (part === "top") {
         loops.push([
-          { kind: "outer", z: 0, surface: "brim" },
-          ...outerWall(),
-          ...topFace(),
-          ...ceilingFace(),
-          ...innerWallDown(),
-          { kind: "inner", z: 0, surface: "brim" },
+          { kind: "inner", z: zs, surface: "seat" },
+          { kind: "outer", z: zs, surface: "seat" },
+          ...outerWall(zs, H),
+          ...topSection,
+          ...innerWallDown(zs, zi1),
         ]);
       } else {
-        // fully closed: the cavity is a separate (inverted) loop
-        loops.push([...bottomNodesStart, ...outerWall(), ...topFace()]);
-        loops.push([...ceilingFace(), ...innerWallDown(), ...bottomNodesEnd]);
+        const neck = zStations(zs, zs + L, segs(zs, zs + L), extras);
+        loops.push([
+          ...bottomNodesStart,
+          ...outerWall(0, zs),
+          { kind: "outer", z: zs, surface: "shoulder" },
+          { kind: "offset", z: zs, off: g, surface: "shoulder" },
+          ...neck.map((z): Node => ({ kind: "offset", z, off: g, surface: "neck" })),
+          { kind: "offset", z: zs + L, off: g, surface: "necktop" },
+          { kind: "offset", z: zs + L, off: c, surface: "necktop" },
+          ...neck
+            .slice()
+            .reverse()
+            .map((z): Node => ({ kind: "offset", z, off: c, surface: "neckin" })),
+          { kind: "offset", z: zs, off: c, surface: "chamfer" },
+          { kind: "inner", z: zs - c, surface: "chamfer" },
+          ...innerWallDown(zi0, zs - c),
+          ...bottomNodesEnd,
+        ]);
       }
-    } else {
-      loops.push([...bottomNodesStart, ...outerWall(), ...topNodes, ...innerWallDown(), ...bottomNodesEnd]);
     }
   }
 
@@ -505,11 +586,14 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
         // the section's squareness and twist, but none of the ribs: half-width = topHole
         s = p.topHole;
       } else {
-        s = node.kind === "inner" ? innerScale(i / R, z, env, bx, by) : outerScale(i / R, z, env, bx, by);
+        if (node.kind === "inner") s = innerScale(i / R, z, env, bx, by);
+        else if (node.kind === "offset") s = Math.max(0.3, innerScale(i / R, z, env, bx, by) - (node.off ?? 0));
+        else s = outerScale(i / R, z, env, bx, by);
       }
       positions.push(bx * s, by * s, z);
     }
-    return { start, center: false, key: `${node.kind}:${z.toFixed(5)}` };
+    const off = node.kind === "offset" ? `:${(node.off ?? 0).toFixed(4)}` : "";
+    return { start, center: false, key: `${node.kind}${off}:${z.toFixed(5)}` };
   };
 
   const stitch = (a: Row, b: Row) => {
@@ -566,7 +650,7 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
 }
 
 function sameNode(a: Node, b: Node) {
-  return a.kind === b.kind && Math.abs(a.z - b.z) < 1e-6 && (a.r ?? 0) === (b.r ?? 0) && (a.rho ?? 0) === (b.rho ?? 0);
+  return a.kind === b.kind && Math.abs(a.z - b.z) < 1e-6 && (a.r ?? 0) === (b.r ?? 0) && (a.rho ?? 0) === (b.rho ?? 0) && (a.off ?? 0) === (b.off ?? 0);
 }
 
 export function bounds(geo: THREE.BufferGeometry) {
