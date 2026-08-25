@@ -1,6 +1,10 @@
 import type * as THREE from "three";
 
-/** Minimal 3MF writer: several meshes as parts of one object, so slicers load them as a multi-part object. */
+/**
+ * Minimal 3MF writer: each mesh is its own object and build item, in place.
+ * (Slicers derived from PrusaSlicer — Bambu, Orca — merge `<components>` of a generic 3MF into one volume, but they do
+ * keep separate build items as separate objects and offer to load them as one object with several parts.)
+ */
 
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -96,7 +100,7 @@ export function weld(geo: THREE.BufferGeometry): { vertices: number[]; triangles
 
 const xmlName = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]!);
 
-export function modelXml(parts: MeshPart[], objectName = "lathe"): string {
+export function modelXml(parts: MeshPart[]): string {
   const out: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">',
@@ -114,14 +118,13 @@ export function modelXml(parts: MeshPart[], objectName = "lathe"): string {
     }
     out.push("</triangles></mesh></object>");
   });
-  const groupId = parts.length + 1;
-  out.push(`<object id="${groupId}" name="${xmlName(objectName)}" type="model"><components>`);
-  parts.forEach((_, n) => out.push(`<component objectid="${n + 1}"/>`));
-  out.push("</components></object>", "</resources>", `<build><item objectid="${groupId}"/></build>`, "</model>");
+  out.push("</resources>", "<build>");
+  parts.forEach((_, n) => out.push(`<item objectid="${n + 1}"/>`));
+  out.push("</build>", "</model>");
   return out.join("\n");
 }
 
-export function make3MF(parts: MeshPart[], objectName = "lathe"): Uint8Array {
+export function make3MF(parts: MeshPart[]): Uint8Array {
   const enc = new TextEncoder();
   const contentTypes =
     '<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n' +
@@ -133,6 +136,6 @@ export function make3MF(parts: MeshPart[], objectName = "lathe"): Uint8Array {
   return zipStore([
     { name: "[Content_Types].xml", data: enc.encode(contentTypes) },
     { name: "_rels/.rels", data: enc.encode(rels) },
-    { name: "3D/3dmodel.model", data: enc.encode(modelXml(parts, objectName)) },
+    { name: "3D/3dmodel.model", data: enc.encode(modelXml(parts)) },
   ]);
 }

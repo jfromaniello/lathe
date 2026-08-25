@@ -28,17 +28,14 @@ export function makeSTLParts(p: ShapeParams): { body: Blob; top: Blob } | null {
   return { body: stlBlob(parts.body), top: stlBlob(parts.top) };
 }
 
-/** Both pieces as parts of one object in a 3MF, in place — assign a filament to each in the slicer. */
+/** Both pieces as two objects in one 3MF, in place — assign a filament to each in the slicer. */
 export function make3MFParts(p: ShapeParams, name = "lathe"): Blob | null {
   const parts = buildParts(exportParamsFor(p));
   if (!parts) return null;
-  const data = make3MF(
-    [
-      { name: "body", geo: parts.body },
-      { name: "top", geo: parts.top },
-    ],
-    name,
-  );
+  const data = make3MF([
+    { name: `${name}-body`, geo: parts.body },
+    { name: `${name}-top`, geo: parts.top },
+  ]);
   parts.body.dispose();
   parts.top.dispose();
   return new Blob([data.buffer as ArrayBuffer], { type: "model/3mf" });

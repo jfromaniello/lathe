@@ -22,7 +22,7 @@ describe("3mf", () => {
     expect(analyzeMesh(parts.body)).toSatisfy(isWatertight);
   });
 
-  it("writes both pieces as components of one object", () => {
+  it("writes both pieces as separate objects, each a build item", () => {
     const parts = buildParts(split)!;
     const xml = modelXml([
       { name: "body", geo: parts.body },
@@ -30,9 +30,8 @@ describe("3mf", () => {
     ]);
     expect(xml).toContain('<object id="1" name="body"');
     expect(xml).toContain('<object id="2" name="top"');
-    expect(xml).toContain('<component objectid="1"/>');
-    expect(xml).toContain('<component objectid="2"/>');
-    expect(xml).toContain('<build><item objectid="3"/></build>');
+    expect(xml).not.toContain("<components>");
+    expect(xml).toContain('<build>\n<item objectid="1"/>\n<item objectid="2"/>\n</build>');
     expect((xml.match(/<triangle /g) ?? []).length).toBe(weld(parts.body).triangles.length / 3 + weld(parts.top).triangles.length / 3);
   });
 

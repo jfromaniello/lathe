@@ -104,7 +104,7 @@ export const en = {
     splitLip: "Neck height",
     splitGap: "Clearance",
     splitHint:
-      "The top slides over a neck on the body, set in by wall + clearance; inside, a 45° chamfer leads down to the thinner wall. Export as 3MF and assign a filament to each piece, or print them separately.",
+      "The top slides over a neck on the body, set in by wall + clearance; inside, a 45° chamfer leads down to the thinner wall. The 3MF holds both pieces in place as two objects: when the slicer offers to load them as one object with several parts, say yes, then give each part its filament. Or print them separately.",
     splitImpossible: "No room for the joint here: move the cut, shorten the neck or thin the wall.",
     advancedPattern: "Advanced: pattern",
     ribCount: "Rib count",
@@ -234,7 +234,7 @@ export const es: Dictionary = {
     splitLip: "Alto del cuello",
     splitGap: "Huelgo",
     splitHint:
-      "La tapa entra sobre un cuello del cuerpo, retraído pared + huelgo; adentro un chaflán a 45° baja hasta la pared más fina. Exportá 3MF y asignale un filamento a cada pieza, o imprimilas por separado.",
+      "La tapa entra sobre un cuello del cuerpo, retraído pared + huelgo; adentro un chaflán a 45° baja hasta la pared más fina. El 3MF trae las dos piezas en posición como dos objetos: cuando el slicer ofrezca cargarlas como un objeto con varias partes, decile que sí, y asignale un filamento a cada parte. O imprimilas por separado.",
     splitImpossible: "No hay lugar para el encastre acá: mové el corte, acortá el cuello o afiná la pared.",
     advancedPattern: "Avanzado: patrón",
     ribCount: "Cantidad de estrías",
