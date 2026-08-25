@@ -1,6 +1,6 @@
 # Lathe
 
-**[lathe3d.com](https://lathe3d.com)** — design fluted vases, twisted lamp shades and ribbed desk bins in the browser and export a print-ready STL.
+**[lathe3d.com](https://lathe3d.com)** · [github.com/jfromaniello/lathe](https://github.com/jfromaniello/lathe) — design fluted vases, twisted lamp shades and ribbed desk bins in the browser and export a print-ready STL.
 
 Every object Lathe makes is a surface of revolution:
 
@@ -63,3 +63,7 @@ pnpm test:watch
 ## Deployment
 
 Pushes to `main` deploy to Vercel. `NEXT_PUBLIC_SITE_URL` sets the canonical origin used in Open Graph tags; `www.lathe3d.com` redirects to the apex in `next.config.ts`.
+
+## License
+
+[MIT](LICENSE) © José F. Romaniello
