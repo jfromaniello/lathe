@@ -112,6 +112,22 @@ describe("geometry dimensions", () => {
     expect(holeCornerReach({ ...squareLid, topHoleShape: "follow" }, 30)).toBeCloseTo(corner, 1);
   });
 
+  it("a following top hole ignores the rib pattern", () => {
+    const geo = buildGeometry(low({ ...DEFAULT_PARAMS, radius: 40, ribCount: 12, ribAmplitude: 3, top: 2, topHole: 20, topHoleShape: "follow" }));
+    const pos = geo.getAttribute("position").array as Float32Array;
+    let rMin = Infinity;
+    let rMax = 0;
+    for (let i = 0; i < pos.length; i += 3) {
+      if (Math.abs(pos[i + 2] - DEFAULT_PARAMS.height) > 1e-4) continue;
+      const r = Math.hypot(pos[i], pos[i + 1]);
+      if (r < 1e-6 || r > 30) continue; // keep only the hole edge
+      rMin = Math.min(rMin, r);
+      rMax = Math.max(rMax, r);
+    }
+    expect(rMin).toBeCloseTo(20, 3);
+    expect(rMax).toBeCloseTo(20, 3);
+  });
+
   it("square sections keep the half-width equal to the radius", () => {
     const geo = buildGeometry(low({ ...DEFAULT_PARAMS, ribCount: 0, squareness: 1, radius: 40 }));
     expect(geo.boundingBox!.max.x).toBeCloseTo(40, 1);
@@ -145,9 +161,11 @@ describe("profileAt", () => {
 });
 
 describe("sanitize", () => {
-  it("clamps a following top hole against the wall at the top of the profile", () => {
-    const p = sanitize({ ...DEFAULT_PARAMS, radius: 40, wall: 2, top: 2, topHole: 39, topHoleShape: "follow", profile: [1, 1, 1, 1, 1, 1, 1] });
-    expect(p.topHole).toBeCloseTo(37, 5);
+  it("clamps a following top hole against the inner wall at the top of the profile", () => {
+    const base = { ...DEFAULT_PARAMS, radius: 40, wall: 2, top: 2, topHole: 39, topHoleShape: "follow" as const, profile: [1, 1, 1, 1, 1, 1, 1] };
+    expect(sanitize({ ...base, ribCount: 0 }).topHole).toBeCloseTo(37, 5);
+    // ribs of 1.2 mm centered on the profile dip 1.2 mm below it
+    expect(sanitize({ ...base, ribAmplitude: 1.2 }).topHole).toBeCloseTo(35.8, 5);
   });
 
   it("clamps a top hole that would not fit inside the wall", () => {

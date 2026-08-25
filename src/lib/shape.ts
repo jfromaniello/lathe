@@ -4,7 +4,7 @@ export type Waveform = "sine" | "triangle" | "scallop" | "square";
 export type Mode = "shell" | "solid";
 /** Which part of the wave sits on the base profile: its midline, its crest (grooves carved inwards) or its valley (ribs grown outwards). */
 export type RibAlign = "center" | "crest" | "valley";
-/** Outline of the top hole: a plain circle, or the outer section (squareness, ribs, twist) offset inwards by a uniform border. */
+/** Outline of the top hole: a plain circle, or the section shape (squareness + twist, no ribs) at half-width topHole. */
 export type HoleShape = "circle" | "follow";
 
 export interface ShapeParams {
@@ -226,6 +226,7 @@ interface Node {
 
 /** How far (mm) the deepest valley of the pattern sits below the base profile. */
 export function ribDepthBelowBase(p: ShapeParams): number {
+  if (p.ribCount <= 0) return 0;
   const a = Math.abs(p.ribAmplitude);
   switch (p.ribAlign) {
     case "crest":
@@ -244,8 +245,10 @@ export function sanitize(p: ShapeParams): ShapeParams {
   if (out.mode === "shell" && out.wall >= minOuter - 0.5) out.mode = "solid";
   if (out.mode === "shell") {
     const innerMin = minOuter - out.wall;
-    // a "follow" hole is a uniform inward offset of the outer section, so it only has to clear the wall at the top
-    const holeMax = out.topHoleShape === "follow" ? out.radius * profileAt(out.profile, 1) - out.wall : innerMin;
+    // a "follow" hole is the plain section (no ribs) scaled to topHole, so it only has to clear the inner wall at the top,
+    // where the ribs may dip below the base profile
+    const holeMax =
+      out.topHoleShape === "follow" ? out.radius * profileAt(out.profile, 1) - ribDepthBelowBase(out) - out.wall : innerMin;
     if (out.top > 0 && out.topHole >= holeMax - 0.5) out.topHole = Math.max(0, holeMax - 1);
     out.bottom = Math.min(out.bottom, out.height * 0.4);
     out.top = Math.min(out.top, out.height * 0.4);
@@ -277,8 +280,6 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
   const zs = p.ribStart * H;
   const ze = p.ribEnd * H;
   const hasRibs = p.ribCount > 0 && p.ribAmplitude !== 0;
-  // "follow" hole: the outer section offset inwards so the border is this wide everywhere (half-width = topHole)
-  const holeBorder = p.radius * profileAt(p.profile, 1) - p.topHole;
   const ribOffset = p.ribAlign === "crest" ? -1 : p.ribAlign === "valley" ? 1 : 0;
 
   const envelope = (z: number) => {
@@ -423,9 +424,14 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
     for (let i = 0; i < R; i++) {
       const theta = thetas[i] + rot;
       const [bx, by] = superellipse(theta, n);
-      let s = outerScale(i / R, z, env, bx, by);
-      if (node.kind === "inner") s = Math.max(0.3, s - p.wall);
-      else if (node.kind === "hole") s = Math.max(0.3, s - holeBorder);
+      let s: number;
+      if (node.kind === "hole") {
+        // the section's squareness and twist, but none of the ribs: half-width = topHole
+        s = p.topHole;
+      } else {
+        s = outerScale(i / R, z, env, bx, by);
+        if (node.kind === "inner") s = Math.max(0.3, s - p.wall);
+      }
       positions.push(bx * s, by * s, z);
     }
     return { start, center: false, key: `${node.kind}:${z.toFixed(5)}` };
