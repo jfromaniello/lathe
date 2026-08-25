@@ -22,7 +22,8 @@ export interface ShapeParams {
   ribFade: number; // mm transition length (0 = hard step)
   ribAlign: RibAlign;
   twist: number; // total degrees over full height
-  wall: number; // mm
+  wall: number; // mm, measured at the deepest rib valley
+  innerRib: number; // 0..1 how much of the rib pattern shows on the inside: 0 = smooth cavity (thicker at crests), 1 = constant wall
   bottom: number; // mm thickness, 0 = open
   top: number; // mm thickness, 0 = open
   topHole: number; // mm radius (half-width) of hole in the top (when top > 0)
@@ -48,6 +49,7 @@ export const DEFAULT_PARAMS: ShapeParams = {
   ribAlign: "center",
   twist: 0,
   wall: 1.2,
+  innerRib: 0,
   bottom: 1.6,
   top: 0,
   topHole: 20,
@@ -78,6 +80,7 @@ export const PRESETS: { id: string; name: string; params: ShapeParams }[] = [
       ribEnd: 1,
       twist: 70,
       wall: 1.2,
+      innerRib: 1,
       bottom: 0,
       top: 2,
       topHole: 20.5,
@@ -241,6 +244,13 @@ export function ribDepthBelowBase(p: ShapeParams): number {
   }
 }
 
+/** Wall thickness range [at the valleys, at the crests] in mm for the current inner-pattern setting. */
+export function wallRange(p: ShapeParams): [number, number] {
+  if (p.mode !== "shell") return [0, 0];
+  const swing = p.ribCount > 0 ? 2 * Math.abs(p.ribAmplitude) : 0;
+  return [p.wall, p.wall + (1 - p.innerRib) * swing];
+}
+
 export function sanitize(p: ShapeParams): ShapeParams {
   const minProfile = Math.max(0.05, Math.min(...p.profile));
   const minOuter = p.radius * minProfile - ribDepthBelowBase(p);
@@ -287,6 +297,15 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
   const ze = p.ribEnd * H;
   const hasRibs = p.ribCount > 0 && p.ribAmplitude !== 0;
   const ribOffset = p.ribAlign === "crest" ? -1 : p.ribAlign === "valley" ? 1 : 0;
+
+  // inner surface: blend between "follows the ribs" (constant wall) and "smooth section" (wall measured at the valleys)
+  const ribDepth = ribDepthBelowBase(p);
+  const innerScale = (u: number, z: number, env: number, bx: number, by: number) => {
+    const outer = outerScale(u, z, env, bx, by);
+    const k = p.innerRib;
+    const smooth = p.radius * profileAt(p.profile, z / H) - env * ribDepth;
+    return Math.max(0.3, k * outer + (1 - k) * smooth - p.wall);
+  };
 
   // --- top plate: flat rim as wide as the wall, then a spherical cap (dome or dish) down to the hole / centre ---
   const hasHole = p.mode === "shell" && p.top > 0 && p.topHole > 0.01;
@@ -456,7 +475,7 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
       const z = zb + domeZ(rho);
       for (let i = 0; i < R; i++) {
         const [bx, by] = superellipse(thetas[i] + rot, n);
-        const s1 = Math.max(0.3, outerScale(i / R, zb, env, bx, by) - rimW);
+        const s1 = rimW > 0 ? innerScale(i / R, zb, env, bx, by) : outerScale(i / R, zb, env, bx, by);
         const x1 = bx * s1;
         const y1 = by * s1;
         let xh = 0;
@@ -486,8 +505,7 @@ export function buildGeometry(input: ShapeParams): THREE.BufferGeometry {
         // the section's squareness and twist, but none of the ribs: half-width = topHole
         s = p.topHole;
       } else {
-        s = outerScale(i / R, z, env, bx, by);
-        if (node.kind === "inner") s = Math.max(0.3, s - p.wall);
+        s = node.kind === "inner" ? innerScale(i / R, z, env, bx, by) : outerScale(i / R, z, env, bx, by);
       }
       positions.push(bx * s, by * s, z);
     }

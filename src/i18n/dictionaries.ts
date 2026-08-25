@@ -79,6 +79,11 @@ export const en = {
     shell: "With wall",
     solid: "Solid (vase mode)",
     wallThickness: "Wall thickness",
+    innerRib: "Pattern inside",
+    innerRibHint: (min: number, max: number) =>
+      max - min < 0.05
+        ? `Wall: ${min.toFixed(1)} mm everywhere (the pattern shows inside).`
+        : `Wall: ${min.toFixed(1)} mm at the grooves, ${max.toFixed(1)} mm at the ridges. 0% = smooth inside.`,
     bottom: "Bottom (0 = open)",
     top: "Top (0 = open)",
     topHole: "Top hole (radius)",
@@ -191,6 +196,11 @@ export const es: Dictionary = {
     shell: "Con pared",
     solid: "Sólido (vase mode)",
     wallThickness: "Espesor pared",
+    innerRib: "Patrón interior",
+    innerRibHint: (min, max) =>
+      max - min < 0.05
+        ? `Pared: ${min.toFixed(1)} mm en todos lados (el patrón se ve adentro).`
+        : `Pared: ${min.toFixed(1)} mm en los valles, ${max.toFixed(1)} mm en las crestas. 0% = interior liso.`,
     bottom: "Fondo (0 = abierto)",
     top: "Tapa (0 = abierta)",
     topHole: "Agujero tapa (radio)",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildGeometry, DEFAULT_PARAMS, effectiveRadialSegments, PRESETS, profileAt, sanitize, type ShapeParams } from "./shape";
+import { buildGeometry, DEFAULT_PARAMS, effectiveRadialSegments, PRESETS, profileAt, sanitize, wallRange, type ShapeParams } from "./shape";
 import { analyzeMesh, isWatertight } from "@/test/mesh";
 
 const low = (p: ShapeParams): ShapeParams => ({ ...p, radialSegments: 96, heightSegments: 40 });
@@ -18,6 +18,8 @@ describe("buildGeometry produces watertight, outward-facing meshes", () => {
     ["square, twisted, ribs fading in a band", { ...DEFAULT_PARAMS, squareness: 0.8, twist: 120, ribFade: 10, ribStart: 0.2, ribEnd: 0.8 }],
     ["negative amplitude (fluted)", { ...DEFAULT_PARAMS, ribAmplitude: -2, ribCount: 28 }],
     ["no ribs", { ...DEFAULT_PARAMS, ribCount: 0 }],
+    ["ribs showing inside (constant wall)", { ...DEFAULT_PARAMS, innerRib: 1, top: 2, topHole: 15, topDome: 6 }],
+    ["ribs half damped inside", { ...DEFAULT_PARAMS, innerRib: 0.5, squareness: 0.6, twist: 45, ribFade: 8 }],
     ["domed closed top", { ...DEFAULT_PARAMS, top: 2, topHole: 0, topDome: 12 }],
     ["dished top with a circular hole", { ...DEFAULT_PARAMS, top: 2, topHole: 15, topDome: -8 }],
     ["domed top, following hole, square + twist", { ...DEFAULT_PARAMS, squareness: 0.8, twist: 90, top: 2, topHole: 20, topHoleShape: "follow", topDome: 10 }],
@@ -167,6 +169,38 @@ describe("geometry dimensions", () => {
       if (Math.abs(pos[i + 2] - p.height) < 1e-4 && r < 39.9) rimInner = Math.max(rimInner, r);
     }
     expect(rimInner).toBeCloseTo(38, 2);
+  });
+
+  /** Radii of the inner-wall vertices around mid-height of a shell. */
+  const innerRadii = (p: ShapeParams) => {
+    const pos = buildGeometry(low(p)).getAttribute("position").array as Float32Array;
+    const out: number[] = [];
+    for (let i = 0; i < pos.length; i += 3) {
+      const z = pos[i + 2];
+      const r = Math.hypot(pos[i], pos[i + 1]);
+      // outer vertices lie in [radius - A, radius + A]; inner ones below radius - A - wall + 2A (ranges don't overlap for A = 0.5)
+      if (z > p.height * 0.45 && z < p.height * 0.55 && r > 1 && r < p.radius - Math.abs(p.ribAmplitude) - 0.05) out.push(r);
+    }
+    return { min: Math.min(...out), max: Math.max(...out) };
+  };
+  const ribbedShell: ShapeParams = { ...DEFAULT_PARAMS, radius: 40, wall: 1.2, ribCount: 12, ribAmplitude: 0.5, ribStart: 0, profile: [1, 1, 1, 1, 1, 1, 1] };
+
+  it("a smooth inside sits at the wall thickness below the deepest valley", () => {
+    const { min, max } = innerRadii({ ...ribbedShell, innerRib: 0 });
+    expect(min).toBeCloseTo(38.3, 2);
+    expect(max).toBeCloseTo(38.3, 2);
+  });
+
+  it("with the pattern inside the wall is constant", () => {
+    const { min, max } = innerRadii({ ...ribbedShell, innerRib: 1 });
+    expect(min).toBeCloseTo(38.3, 1);
+    expect(max).toBeCloseTo(39.3, 1);
+  });
+
+  it("wallRange reports valley and crest thickness", () => {
+    expect(wallRange({ ...ribbedShell, innerRib: 0 })).toEqual([1.2, 2.2]);
+    expect(wallRange({ ...ribbedShell, innerRib: 1 })).toEqual([1.2, 1.2]);
+    expect(wallRange({ ...ribbedShell, ribCount: 0 })).toEqual([1.2, 1.2]);
   });
 
   it("square sections keep the half-width equal to the radius", () => {

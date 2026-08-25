@@ -18,6 +18,7 @@ const KEYS: Record<keyof ShapeParams, string> = {
   ribAlign: "al",
   twist: "tw",
   wall: "w",
+  innerRib: "ir",
   bottom: "b",
   top: "t",
   topHole: "th",
@@ -95,6 +96,7 @@ export function decodeParams(search: string, base: ShapeParams = DEFAULT_PARAMS)
   p.ribFade = num(g("ribFade"), 0, 500) ?? p.ribFade;
   p.twist = num(g("twist"), -3600, 3600) ?? p.twist;
   p.wall = num(g("wall"), 0.2, 50) ?? p.wall;
+  p.innerRib = num(g("innerRib"), 0, 1) ?? p.innerRib;
   p.bottom = num(g("bottom"), 0, 100) ?? p.bottom;
   p.top = num(g("top"), 0, 100) ?? p.top;
   p.topHole = num(g("topHole"), 0, 500) ?? p.topHole;

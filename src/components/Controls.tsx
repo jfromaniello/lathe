@@ -1,6 +1,6 @@
 "use client";
 
-import { effectiveRadialSegments, type ShapeParams, type Waveform, type Mode, type RibAlign, type HoleShape } from "@/lib/shape";
+import { effectiveRadialSegments, wallRange, type ShapeParams, type Waveform, type Mode, type RibAlign, type HoleShape } from "@/lib/shape";
 import { useT } from "@/i18n/context";
 import ProfileEditor from "./ProfileEditor";
 
@@ -110,6 +110,20 @@ export default function Controls({ params, onChange }: { params: ShapeParams; on
         {isShell ? (
           <>
             <Slider label={t.wallThickness} value={params.wall} min={0.4} max={8} step={0.1} unit="mm" onChange={(v) => set("wall", v)} />
+            {params.ribCount > 0 && params.ribAmplitude !== 0 && (
+              <div>
+                <Slider
+                  label={t.innerRib}
+                  value={Math.round(params.innerRib * 100)}
+                  min={0}
+                  max={100}
+                  step={5}
+                  unit="%"
+                  onChange={(v) => set("innerRib", Math.min(1, Math.max(0, v / 100)))}
+                />
+                <p className="mt-1 text-[11px] text-neutral-500">{t.innerRibHint(...wallRange(params))}</p>
+              </div>
+            )}
             <Slider label={t.bottom} value={params.bottom} min={0} max={10} step={0.1} unit="mm" onChange={(v) => set("bottom", v)} />
             <Slider label={t.top} value={params.top} min={0} max={10} step={0.1} unit="mm" onChange={(v) => set("top", v)} />
             {params.top > 0 && (
