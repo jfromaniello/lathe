@@ -13,6 +13,8 @@ describe("buildGeometry produces watertight, outward-facing meshes", () => {
     ["shell closed / closed + hole", { ...DEFAULT_PARAMS, bottom: 2, top: 2, topHole: 15 }],
     ["shell open bottom / closed top", { ...DEFAULT_PARAMS, bottom: 0, top: 2, topHole: 0 }],
     ["shell open bottom / top hole", { ...DEFAULT_PARAMS, bottom: 0, top: 2, topHole: 15 }],
+    ["top hole following a square, ribbed, twisted section", { ...DEFAULT_PARAMS, squareness: 0.8, twist: 90, top: 2, topHole: 25, topHoleShape: "follow" }],
+    ["top hole following the shape, open bottom", { ...DEFAULT_PARAMS, bottom: 0, top: 2, topHole: 25, topHoleShape: "follow", ribCount: 0 }],
     ["square, twisted, ribs fading in a band", { ...DEFAULT_PARAMS, squareness: 0.8, twist: 120, ribFade: 10, ribStart: 0.2, ribEnd: 0.8 }],
     ["negative amplitude (fluted)", { ...DEFAULT_PARAMS, ribAmplitude: -2, ribCount: 28 }],
     ["no ribs", { ...DEFAULT_PARAMS, ribCount: 0 }],
@@ -83,6 +85,33 @@ describe("geometry dimensions", () => {
     expect(half.rMax).toBeCloseTo(smooth.rMax, 1);
   });
 
+  /** Largest distance from the axis among the top-face hole-edge vertices (those inside the given half-width). */
+  const holeCornerReach = (p: ShapeParams, halfWidth: number) => {
+    const geo = buildGeometry(low(p));
+    const pos = geo.getAttribute("position").array as Float32Array;
+    const H = p.height;
+    let reach = 0;
+    for (let i = 0; i < pos.length; i += 3) {
+      if (Math.abs(pos[i + 2] - H) > 1e-4) continue;
+      const x = pos[i];
+      const y = pos[i + 1];
+      if (Math.max(Math.abs(x), Math.abs(y)) > halfWidth + 0.5 || Math.hypot(x, y) < 1e-6) continue;
+      reach = Math.max(reach, Math.hypot(x, y));
+    }
+    return reach;
+  };
+  const squareLid: ShapeParams = { ...DEFAULT_PARAMS, squareness: 1, radius: 40, ribCount: 0, top: 2, topHole: 30 };
+
+  it("a circular top hole stays a circle on a square body", () => {
+    expect(holeCornerReach({ ...squareLid, topHoleShape: "circle" }, 30)).toBeCloseTo(30, 1);
+  });
+
+  it("a top hole that follows the shape has the section's corners at the hole half-width", () => {
+    // superellipse with n = 12 (squareness 1): on the diagonal r = (2 * cos(45°)^12)^(-1/12) = 2^(5/12) times the half-width
+    const corner = 30 * Math.pow(2, 5 / 12);
+    expect(holeCornerReach({ ...squareLid, topHoleShape: "follow" }, 30)).toBeCloseTo(corner, 1);
+  });
+
   it("square sections keep the half-width equal to the radius", () => {
     const geo = buildGeometry(low({ ...DEFAULT_PARAMS, ribCount: 0, squareness: 1, radius: 40 }));
     expect(geo.boundingBox!.max.x).toBeCloseTo(40, 1);
@@ -116,6 +145,11 @@ describe("profileAt", () => {
 });
 
 describe("sanitize", () => {
+  it("clamps a following top hole against the wall at the top of the profile", () => {
+    const p = sanitize({ ...DEFAULT_PARAMS, radius: 40, wall: 2, top: 2, topHole: 39, topHoleShape: "follow", profile: [1, 1, 1, 1, 1, 1, 1] });
+    expect(p.topHole).toBeCloseTo(37, 5);
+  });
+
   it("clamps a top hole that would not fit inside the wall", () => {
     const s = sanitize({ ...DEFAULT_PARAMS, top: 2, topHole: 200 });
     expect(s.topHole).toBeLessThan(DEFAULT_PARAMS.radius);

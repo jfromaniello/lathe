@@ -1,4 +1,4 @@
-import { DEFAULT_PARAMS, type ShapeParams, type Waveform, type Mode, type RibAlign } from "./shape";
+import { DEFAULT_PARAMS, type ShapeParams, type Waveform, type Mode, type RibAlign, type HoleShape } from "./shape";
 import { DEFAULT_VIEW, MATERIALS, type MaterialKind, type ViewSettings } from "./view";
 
 // short URL keys for each param
@@ -21,6 +21,7 @@ const KEYS: Record<keyof ShapeParams, string> = {
   bottom: "b",
   top: "t",
   topHole: "th",
+  topHoleShape: "ths",
   radialSegments: "seg",
   heightSegments: "hseg",
 };
@@ -28,6 +29,7 @@ const PREVIEW_ONLY: (keyof ShapeParams)[] = ["radialSegments", "heightSegments"]
 const WAVEFORMS: Waveform[] = ["sine", "triangle", "scallop", "square"];
 const MODES: Mode[] = ["shell", "solid"];
 const ALIGNS: RibAlign[] = ["center", "crest", "valley"];
+const HOLE_SHAPES: HoleShape[] = ["circle", "follow"];
 
 const fmt = (n: number) => String(Math.round(n * 1000) / 1000);
 
@@ -72,6 +74,8 @@ export function decodeParams(search: string, base: ShapeParams = DEFAULT_PARAMS)
   if (wf && WAVEFORMS.includes(wf as Waveform)) p.ribWaveform = wf as Waveform;
   const al = g("ribAlign");
   if (al && ALIGNS.includes(al as RibAlign)) p.ribAlign = al as RibAlign;
+  const hs = g("topHoleShape");
+  if (hs && HOLE_SHAPES.includes(hs as HoleShape)) p.topHoleShape = hs as HoleShape;
 
   const prof = g("profile");
   if (prof) {

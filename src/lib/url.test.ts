@@ -31,6 +31,13 @@ describe("url encoding", () => {
     expect(decodeParams("?al=sideways").ribAlign).toBe("center");
   });
 
+  it("round-trips the top hole shape", () => {
+    const qs = encodeParams({ ...DEFAULT_PARAMS, top: 2, topHoleShape: "follow" });
+    expect(qs).toContain("ths=follow");
+    expect(decodeParams(qs).topHoleShape).toBe("follow");
+    expect(decodeParams("?ths=hexagon").topHoleShape).toBe("circle");
+  });
+
   it("tolerates garbage and clamps out-of-range values", () => {
     const p = decodeParams("?h=abc&r=99999&rc=-5&rw=bogus&p=1,2,x&m=nope");
     expect(p.height).toBe(DEFAULT_PARAMS.height);

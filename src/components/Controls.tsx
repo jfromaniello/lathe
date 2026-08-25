@@ -1,11 +1,12 @@
 "use client";
 
-import { effectiveRadialSegments, type ShapeParams, type Waveform, type Mode, type RibAlign } from "@/lib/shape";
+import { effectiveRadialSegments, type ShapeParams, type Waveform, type Mode, type RibAlign, type HoleShape } from "@/lib/shape";
 import { useT } from "@/i18n/context";
 import ProfileEditor from "./ProfileEditor";
 
 const WAVEFORMS: Waveform[] = ["scallop", "sine", "triangle", "square"];
 const ALIGNS: RibAlign[] = ["center", "crest", "valley"];
+const HOLE_SHAPES: HoleShape[] = ["circle", "follow"];
 
 function Slider({
   label,
@@ -106,7 +107,24 @@ export default function Controls({ params, onChange }: { params: ShapeParams; on
             <Slider label={t.bottom} value={params.bottom} min={0} max={10} step={0.1} unit="mm" onChange={(v) => set("bottom", v)} />
             <Slider label={t.top} value={params.top} min={0} max={10} step={0.1} unit="mm" onChange={(v) => set("top", v)} />
             {params.top > 0 && (
-              <Slider label={t.topHole} value={params.topHole} min={0} max={60} step={0.5} unit="mm" onChange={(v) => set("topHole", v)} />
+              <>
+                <Slider label={t.topHole} value={params.topHole} min={0} max={60} step={0.5} unit="mm" onChange={(v) => set("topHole", v)} />
+                <div>
+                  <div className="mb-1 text-xs text-neutral-400">{t.topHoleShape}</div>
+                  <div className="flex gap-1 rounded bg-neutral-800 p-1 text-xs">
+                    {HOLE_SHAPES.map((s) => (
+                      <button
+                        key={s}
+                        className={`flex-1 rounded px-2 py-1 ${params.topHoleShape === s ? "bg-amber-500 text-black" : "text-neutral-300 hover:bg-neutral-700"}`}
+                        onClick={() => set("topHoleShape", s)}
+                      >
+                        {t.topHoleShapes[s]}
+                      </button>
+                    ))}
+                  </div>
+                  {params.topHoleShape === "follow" && <p className="mt-1 text-[11px] text-neutral-500">{t.topHoleFollowHint}</p>}
+                </div>
+              </>
             )}
           </>
         ) : (
