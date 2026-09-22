@@ -3,7 +3,8 @@ import type * as THREE from "three";
 /**
  * Minimal 3MF writer: each mesh is its own object and build item, in place.
  * (Slicers derived from PrusaSlicer — Bambu, Orca — merge `<components>` of a generic 3MF into one volume, but they do
- * keep separate build items as separate objects and offer to load them as one object with several parts.)
+ * keep separate build items as separate objects. Items must all sit on z = 0: objects "at multiple heights" trigger a
+ * prompt to load the file as one object with several parts — see layOutParts in export.ts.)
  */
 
 const CRC_TABLE = (() => {
