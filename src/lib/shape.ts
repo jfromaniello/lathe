@@ -21,6 +21,10 @@ export interface ShapeParams {
   ribEnd: number; // 0..1
   ribFade: number; // mm transition length (0 = hard step)
   ribAlign: RibAlign;
+  lobeCount: number; // big waves around the section (0 = none); they are part of the shape, the ribs ride on top
+  lobeAmplitude: number; // mm, swing of the lobes either side of the base profile
+  lobeWaveform: Waveform;
+  lobeProfile: number[]; // lobe amplitude multipliers, evenly spaced from z=0 (bottom) to z=height (top)
   twist: number; // total degrees over full height
   wall: number; // mm, measured at the deepest rib valley
   innerRib: number; // 0..1 how much of the rib pattern shows on the inside: 0 = smooth cavity (thicker at crests), 1 = constant wall
@@ -50,6 +54,10 @@ export const DEFAULT_PARAMS: ShapeParams = {
   ribEnd: 1,
   ribFade: 0,
   ribAlign: "center",
+  lobeCount: 0,
+  lobeAmplitude: 8,
+  lobeWaveform: "sine",
+  lobeProfile: [0, 0.8, 1, 1, 1, 0.8, 0],
   twist: 0,
   wall: 1.2,
   innerRib: 0,
@@ -122,6 +130,28 @@ export const PRESETS: { id: string; name: string; params: ShapeParams }[] = [
       ribCount: 0,
       ribAmplitude: 0,
       twist: 90,
+      wall: 1.2,
+      bottom: 1.6,
+      top: 0,
+    },
+  },
+  {
+    id: "swirl-vase",
+    name: "Swirl vase",
+    params: {
+      ...DEFAULT_PARAMS,
+      height: 200,
+      radius: 52,
+      profile: [0.8, 0.95, 1.02, 1, 0.92, 0.84, 0.88],
+      ribCount: 180,
+      ribAmplitude: 0.7,
+      ribWaveform: "scallop",
+      ribStart: 0,
+      ribEnd: 1,
+      lobeCount: 3,
+      lobeAmplitude: 12,
+      lobeProfile: [0.15, 0.9, 1, 1, 0.75, 0.25, 0],
+      twist: 150,
       wall: 1.2,
       bottom: 1.6,
       top: 0,
@@ -251,6 +281,22 @@ export function ribDepthBelowBase(p: ShapeParams): number {
   }
 }
 
+/** Lobe amplitude multiplier at t in [0,1] of the height (never negative, even where the spline overshoots). */
+export function lobeEnvelope(p: ShapeParams, t: number): number {
+  if (p.lobeCount <= 0 || p.lobeAmplitude === 0) return 0;
+  return Math.max(0, profileAt(p.lobeProfile, t));
+}
+
+/** How far (mm) the valleys of the lobes sit below the base profile: at height fraction t, or the worst over the height. */
+export function lobeDepthBelowBase(p: ShapeParams, t?: number): number {
+  if (p.lobeCount <= 0 || p.lobeAmplitude === 0) return 0;
+  const a = Math.abs(p.lobeAmplitude);
+  if (t !== undefined) return a * lobeEnvelope(p, t);
+  let worst = 0;
+  for (let i = 0; i <= 64; i++) worst = Math.max(worst, lobeEnvelope(p, i / 64));
+  return a * worst;
+}
+
 /** Wall thickness range [at the valleys, at the crests] in mm for the current inner-pattern setting. */
 export function wallRange(p: ShapeParams): [number, number] {
   if (p.mode !== "shell") return [0, 0];
@@ -260,15 +306,17 @@ export function wallRange(p: ShapeParams): [number, number] {
 
 export function sanitize(p: ShapeParams): ShapeParams {
   const minProfile = Math.max(0.05, Math.min(...p.profile));
-  const minOuter = p.radius * minProfile - ribDepthBelowBase(p);
+  const minOuter = p.radius * minProfile - ribDepthBelowBase(p) - lobeDepthBelowBase(p);
   const out = { ...p };
   if (out.mode === "shell" && out.wall >= minOuter - 0.5) out.mode = "solid";
   if (out.mode === "shell") {
     const innerMin = minOuter - out.wall;
     // a "follow" hole is the plain section (no ribs) scaled to topHole, so it only has to clear the inner wall at the top,
-    // where the ribs may dip below the base profile
+    // where the ribs and lobes may dip below the base profile
     const holeMax =
-      out.topHoleShape === "follow" ? out.radius * profileAt(out.profile, 1) - ribDepthBelowBase(out) - out.wall : innerMin;
+      out.topHoleShape === "follow"
+        ? out.radius * profileAt(out.profile, 1) - ribDepthBelowBase(out) - lobeDepthBelowBase(out, 1) - out.wall
+        : innerMin;
     if (out.top > 0 && out.topHole >= holeMax - 0.5) out.topHole = Math.max(0, holeMax - 1);
     out.bottom = Math.min(out.bottom, out.height * 0.4);
     out.top = Math.min(out.top, out.height * 0.4);
@@ -283,7 +331,7 @@ export function sanitize(p: ShapeParams): ShapeParams {
   } else {
     const lo = out.bottom + out.wall + out.splitGap + 1;
     const hi = out.height - out.top - out.splitLip - 0.5;
-    const cavity = out.radius * minProfile - ribDepthBelowBase(out) - 2 * out.wall - out.splitGap;
+    const cavity = out.radius * minProfile - ribDepthBelowBase(out) - lobeDepthBelowBase(out) - 2 * out.wall - out.splitGap;
     if (hi <= lo || cavity < 1) out.split = 0;
     else out.split = Math.min(hi, Math.max(lo, out.split * out.height)) / out.height;
   }
@@ -353,13 +401,18 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
   const ze = p.ribEnd * H;
   const hasRibs = p.ribCount > 0 && p.ribAmplitude !== 0;
   const ribOffset = p.ribAlign === "crest" ? -1 : p.ribAlign === "valley" ? 1 : 0;
+  const hasLobes = p.lobeCount > 0 && p.lobeAmplitude !== 0;
+  /** Lobes are part of the section (mm, along the base direction): both surfaces follow them, unlike the ribs. (A square
+   * lobe shares the ribs' sharpness.) */
+  const lobe = (u: number, z: number) =>
+    hasLobes ? p.lobeAmplitude * lobeEnvelope(p, z / H) * wave(p.lobeWaveform, p.lobeCount * u, p.ribSharpness) : 0;
 
   // inner surface: blend between "follows the ribs" (constant wall) and "smooth section" (wall measured at the valleys)
   const ribDepth = ribDepthBelowBase(p);
   const innerScale = (u: number, z: number, env: number, bx: number, by: number) => {
     const outer = outerScale(u, z, env, bx, by);
     const k = p.innerRib;
-    const smooth = p.radius * profileAt(p.profile, z / H) - env * ribDepth;
+    const smooth = p.radius * profileAt(p.profile, z / H) + lobe(u, z) / (Math.hypot(bx, by) || 1) - env * ribDepth;
     return Math.max(0.3, k * outer + (1 - k) * smooth - p.wall);
   };
 
@@ -397,14 +450,14 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
   const outerScale = (u: number, z: number, env: number, bx: number, by: number) => {
     const zf = z / H;
     const base = p.radius * profileAt(p.profile, zf);
-    let rib = 0;
+    let rib = lobe(u, z);
     if (hasRibs && env > 0) {
       // wave is in [-1, 1]; the offset (scaled by the envelope too, so the smooth zone blends into it) anchors
       // the crest or the valley to the base profile instead of the midline
       const w = Math.sign(p.ribAmplitude) * wave(p.ribWaveform, p.ribCount * u, p.ribSharpness);
-      rib = Math.abs(p.ribAmplitude) * env * (w + ribOffset);
+      rib += Math.abs(p.ribAmplitude) * env * (w + ribOffset);
     }
-    // normalise so the rib amplitude is in mm even on the corners of a square-ish section
+    // normalise so the rib and lobe amplitudes are in mm even on the corners of a square-ish section
     const len = Math.hypot(bx, by) || 1;
     return base + rib / len;
   };

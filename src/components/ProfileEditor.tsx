@@ -6,11 +6,18 @@ import { profileAt } from "@/lib/shape";
 const W = 220;
 const H = 240;
 const PAD = 16;
-const MIN = 0.15;
 const MAX = 1.6;
 const SNAP = 0.04; // snap distance in multiplier units
 
-export default function ProfileEditor({ profile, onChange }: { profile: number[]; onChange: (p: number[]) => void }) {
+export default function ProfileEditor({
+  profile,
+  onChange,
+  min = 0.15,
+}: {
+  profile: number[];
+  onChange: (p: number[]) => void;
+  min?: number; // lowest value a point can be dragged to
+}) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<number | null>(null);
   const [snapped, setSnapped] = useState<number | null>(null); // value currently snapped to
@@ -42,12 +49,12 @@ export default function ProfileEditor({ profile, onChange }: { profile: number[]
     const rect = svgRef.current.getBoundingClientRect();
     const x = ((clientX - rect.left) / rect.width) * W;
     let m = Math.abs(x - cx) / scaleX;
-    m = Math.min(MAX, Math.max(MIN, m));
+    m = Math.min(MAX, Math.max(min, m));
 
     // snap to the other points' values and to 1.0 (hold Alt to disable)
     let snapTo: number | null = null;
     if (!altKey) {
-      const candidates = [1, ...profile.filter((_, i) => i !== drag)];
+      const candidates = [1, ...(min <= 0 ? [0] : []), ...profile.filter((_, i) => i !== drag)];
       let best = SNAP;
       for (const c of candidates) {
         const d = Math.abs(m - c);

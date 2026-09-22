@@ -182,6 +182,34 @@ export default function Controls({ params, onChange }: { params: ShapeParams; on
         </Section>
       )}
 
+      <Section title={t.lobes} open={params.lobeCount > 0}>
+        <p className="-mt-1 text-[11px] text-neutral-500">{t.lobesHint}</p>
+        <Slider label={t.lobeCount} value={params.lobeCount} min={0} max={12} onChange={(v) => set("lobeCount", v)} />
+        {params.lobeCount > 0 && (
+          <>
+            <Slider label={t.lobeAmplitude} value={params.lobeAmplitude} min={-30} max={30} step={0.5} unit="mm" onChange={(v) => set("lobeAmplitude", v)} />
+            <label className="block text-xs text-neutral-400">
+              {t.waveform}
+              <select
+                className="mt-1 w-full rounded bg-neutral-800 px-2 py-1 text-neutral-100"
+                value={params.lobeWaveform}
+                onChange={(e) => set("lobeWaveform", e.target.value as Waveform)}
+              >
+                {WAVEFORMS.map((w) => (
+                  <option key={w} value={w}>
+                    {t.waveforms[w]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div>
+              <div className="mb-1 text-xs text-neutral-400">{t.lobeProfile}</div>
+              <ProfileEditor profile={params.lobeProfile} min={0} onChange={(p) => set("lobeProfile", p)} />
+            </div>
+          </>
+        )}
+      </Section>
+
       <Section title={t.advancedPattern} open={false}>
         <Slider label={t.ribCount} value={params.ribCount} min={0} max={200} onChange={(v) => set("ribCount", v)} />
         <Slider label={t.ribAmplitude} value={params.ribAmplitude} min={-10} max={10} step={0.1} unit="mm" onChange={(v) => set("ribAmplitude", v)} />

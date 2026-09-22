@@ -16,6 +16,10 @@ const KEYS: Record<keyof ShapeParams, string> = {
   ribEnd: "r1",
   ribFade: "rf",
   ribAlign: "al",
+  lobeCount: "lc",
+  lobeAmplitude: "la",
+  lobeWaveform: "lw",
+  lobeProfile: "lp",
   twist: "tw",
   wall: "w",
   innerRib: "ir",
@@ -77,6 +81,8 @@ export function decodeParams(search: string, base: ShapeParams = DEFAULT_PARAMS)
   if (mode && MODES.includes(mode as Mode)) p.mode = mode as Mode;
   const wf = g("ribWaveform");
   if (wf && WAVEFORMS.includes(wf as Waveform)) p.ribWaveform = wf as Waveform;
+  const lw = g("lobeWaveform");
+  if (lw && WAVEFORMS.includes(lw as Waveform)) p.lobeWaveform = lw as Waveform;
   const al = g("ribAlign");
   if (al && ALIGNS.includes(al as RibAlign)) p.ribAlign = al as RibAlign;
   const hs = g("topHoleShape");
@@ -86,6 +92,11 @@ export function decodeParams(search: string, base: ShapeParams = DEFAULT_PARAMS)
   if (prof) {
     const arr = prof.split(",").map(Number);
     if (arr.length >= 2 && arr.length <= 16 && arr.every((x) => Number.isFinite(x) && x > 0.05 && x < 3)) p.profile = arr;
+  }
+  const lprof = g("lobeProfile");
+  if (lprof) {
+    const arr = lprof.split(",").map(Number);
+    if (arr.length >= 2 && arr.length <= 16 && arr.every((x) => Number.isFinite(x) && x >= 0 && x < 3)) p.lobeProfile = arr;
   }
 
   p.height = num(g("height"), 5, 1000) ?? p.height;
@@ -97,6 +108,8 @@ export function decodeParams(search: string, base: ShapeParams = DEFAULT_PARAMS)
   p.ribStart = num(g("ribStart"), 0, 1) ?? p.ribStart;
   p.ribEnd = num(g("ribEnd"), 0, 1) ?? p.ribEnd;
   p.ribFade = num(g("ribFade"), 0, 500) ?? p.ribFade;
+  p.lobeCount = Math.round(num(g("lobeCount"), 0, 64) ?? p.lobeCount);
+  p.lobeAmplitude = num(g("lobeAmplitude"), -100, 100) ?? p.lobeAmplitude;
   p.twist = num(g("twist"), -3600, 3600) ?? p.twist;
   p.wall = num(g("wall"), 0.2, 50) ?? p.wall;
   p.innerRib = num(g("innerRib"), 0, 1) ?? p.innerRib;

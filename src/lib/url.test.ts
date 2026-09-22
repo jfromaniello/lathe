@@ -49,6 +49,11 @@ describe("url encoding", () => {
     expect(decodeParams(qs)).toEqual(p);
   });
 
+  it("round-trips the lobes", () => {
+    const p = { ...DEFAULT_PARAMS, lobeCount: 3, lobeAmplitude: -7.5, lobeWaveform: "triangle" as const, lobeProfile: [0, 0.5, 1, 0.25] };
+    expect(decodeParams(encodeParams(p))).toEqual(p);
+  });
+
   it("tolerates garbage and clamps out-of-range values", () => {
     const p = decodeParams("?h=abc&r=99999&rc=-5&rw=bogus&p=1,2,x&m=nope");
     expect(p.height).toBe(DEFAULT_PARAMS.height);

@@ -29,6 +29,10 @@ describe("buildGeometry produces watertight, outward-facing meshes", () => {
     ["solid dome", { ...DEFAULT_PARAMS, mode: "solid", topDome: 15 }],
     ["solid dish", { ...DEFAULT_PARAMS, mode: "solid", topDome: -15 }],
     ["wall thicker than the object falls back to solid", { ...DEFAULT_PARAMS, wall: 60 }],
+    ["lobes + fine ribs, twisted", { ...DEFAULT_PARAMS, lobeCount: 3, lobeAmplitude: 8, ribCount: 120, ribAmplitude: 0.6, twist: 120 }],
+    ["lobes on a square section, closed domed top with a following hole", { ...DEFAULT_PARAMS, squareness: 0.6, lobeCount: 4, lobeAmplitude: 6, lobeProfile: [1, 1, 1], top: 2, topHole: 15, topDome: 6 }],
+    ["inverted triangle lobes, open bottom", { ...DEFAULT_PARAMS, bottom: 0, lobeCount: 5, lobeAmplitude: -5, lobeWaveform: "triangle" }],
+    ["solid with lobes", { ...DEFAULT_PARAMS, mode: "solid", lobeCount: 3, lobeAmplitude: 10, twist: 90 }],
   ];
   it.each(cases)("%s", (_name, params) => {
     const report = analyzeMesh(buildGeometry(low(params)));
@@ -44,6 +48,7 @@ describe("two pieces", () => {
     ["open top (a collar)", { ...DEFAULT_PARAMS, top: 0, split: 0.8 }],
     ["ribs inside", { ...DEFAULT_PARAMS, innerRib: 1, split: 0.5 }],
     ["cut through the rib fade", { ...DEFAULT_PARAMS, ribStart: 0.2, ribEnd: 0.9, ribFade: 10, split: 0.88 }],
+    ["lobes through the joint", { ...DEFAULT_PARAMS, lobeCount: 3, lobeAmplitude: 6, lobeProfile: [1, 1, 1], split: 0.6 }],
   ];
   it.each(cases)("both pieces are watertight: %s", (_name, params) => {
     const parts = buildParts(low(params));
@@ -258,6 +263,32 @@ describe("geometry dimensions", () => {
     expect(wallRange({ ...ribbedShell, ribCount: 0 })).toEqual([1.2, 1.2]);
   });
 
+  it("lobes swing the radius by their amplitude and the inside follows them at the wall thickness", () => {
+    const p: ShapeParams = { ...DEFAULT_PARAMS, bottom: 0, radius: 40, wall: 1.2, ribCount: 0, lobeCount: 3, lobeAmplitude: 5, lobeProfile: [1, 1, 1], profile: [1, 1, 1] };
+    const pos = buildGeometry(low(p)).getAttribute("position").array as Float32Array;
+    // open bottom so both walls share their stations; outer and inner vertices at mid-height share their angles: per angle, the radial gap is the wall
+    const byAngle = new Map<string, number[]>();
+    for (let i = 0; i < pos.length; i += 3) {
+      if (Math.abs(pos[i + 2] - p.height / 2) > 0.01) continue;
+      const key = Math.atan2(pos[i + 1], pos[i]).toFixed(2);
+      byAngle.set(key, [...(byAngle.get(key) ?? []), Math.hypot(pos[i], pos[i + 1])]);
+    }
+    const outer = [...byAngle.values()].map((rs) => Math.max(...rs));
+    expect(Math.max(...outer)).toBeCloseTo(45, 1);
+    expect(Math.min(...outer)).toBeCloseTo(35, 1);
+    expect(byAngle.size).toBeGreaterThan(90);
+    for (const rs of byAngle.values()) expect(Math.max(...rs) - Math.min(...rs)).toBeCloseTo(1.2, 3);
+  });
+
+  it("lobes fade out where their profile is 0", () => {
+    const p: ShapeParams = { ...DEFAULT_PARAMS, mode: "solid", radius: 40, ribCount: 0, lobeCount: 3, lobeAmplitude: 5, lobeProfile: [0, 1, 0], profile: [1, 1, 1] };
+    const pos = buildGeometry(low(p)).getAttribute("position").array as Float32Array;
+    for (let i = 0; i < pos.length; i += 3) {
+      const r = Math.hypot(pos[i], pos[i + 1]);
+      if (pos[i + 2] < 1e-6 && r > 1e-6) expect(r).toBeCloseTo(40, 3);
+    }
+  });
+
   it("square sections keep the half-width equal to the radius", () => {
     const geo = buildGeometry(low({ ...DEFAULT_PARAMS, ribCount: 0, squareness: 1, radius: 40 }));
     expect(geo.boundingBox!.max.x).toBeCloseTo(40, 1);
@@ -301,6 +332,11 @@ describe("sanitize", () => {
     expect(sanitize({ ...base, ribCount: 0 }).topHole).toBeCloseTo(37, 5);
     // ribs of 1.2 mm centered on the profile dip 1.2 mm below it
     expect(sanitize({ ...base, ribAmplitude: 1.2 }).topHole).toBeCloseTo(35.8, 5);
+  });
+
+  it("keeps a following top hole clear of the lobes at the top", () => {
+    const p = sanitize({ ...DEFAULT_PARAMS, ribCount: 0, radius: 40, wall: 1.2, profile: [1, 1, 1], top: 2, topHole: 38, lobeCount: 3, lobeAmplitude: 6, lobeProfile: [1, 1, 1] });
+    expect(p.topHole).toBeCloseTo(40 - 6 - 1.2 - 1, 5);
   });
 
   it("clamps a top hole that would not fit inside the wall", () => {

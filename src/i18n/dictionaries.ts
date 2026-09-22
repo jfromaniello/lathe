@@ -53,6 +53,7 @@ export const en = {
       bowl: "Bowl",
       "pencil-cup": "Pencil cup",
       faceted: "Faceted",
+      "swirl-vase": "Swirl vase",
     } as Record<string, string>,
   },
   patterns: {
@@ -106,6 +107,11 @@ export const en = {
     splitHint:
       "The top slides over a neck on the body, set in by wall + clearance; inside, a 45° chamfer leads down to the thinner wall. The 3MF holds both pieces as two objects laid out on the bed, the top upside down ready to print; give each object its filament, or print them separately.",
     splitImpossible: "No room for the joint here: move the cut, shorten the neck or thin the wall.",
+    lobes: "Lobes",
+    lobesHint: "Big waves around the body. Unlike the ribs they are part of the shape: the inside follows them, and with twist they swirl.",
+    lobeCount: "Lobe count",
+    lobeAmplitude: "Depth",
+    lobeProfile: "How much they show along the height (0 = round)",
     advancedPattern: "Advanced: pattern",
     ribCount: "Rib count",
     ribAmplitude: "Depth",
@@ -183,6 +189,7 @@ export const es: Dictionary = {
       bowl: "Bowl",
       "pencil-cup": "Lapicero",
       faceted: "Facetado",
+      "swirl-vase": "Florero remolino",
     },
   },
   patterns: {
@@ -236,6 +243,11 @@ export const es: Dictionary = {
     splitHint:
       "La tapa entra sobre un cuello del cuerpo, retraído pared + huelgo; adentro un chaflán a 45° baja hasta la pared más fina. El 3MF trae las dos piezas como dos objetos apoyados en la cama, la tapa dada vuelta lista para imprimir; asignale un filamento a cada objeto, o imprimilas por separado.",
     splitImpossible: "No hay lugar para el encastre acá: mové el corte, acortá el cuello o afiná la pared.",
+    lobes: "Lóbulos",
+    lobesHint: "Ondas grandes alrededor del cuerpo. A diferencia de las estrías son parte de la forma: el interior las sigue, y con twist se arremolinan.",
+    lobeCount: "Cantidad de lóbulos",
+    lobeAmplitude: "Profundidad",
+    lobeProfile: "Cuánto se marcan a lo largo del alto (0 = redondo)",
     advancedPattern: "Avanzado: patrón",
     ribCount: "Cantidad de estrías",
     ribAmplitude: "Profundidad",
