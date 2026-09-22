@@ -21,6 +21,7 @@ const KEYS: Record<keyof ShapeParams, string> = {
   lobeWaveform: "lw",
   lobeProfile: "lp",
   twist: "tw",
+  twistCurve: "tc",
   wall: "w",
   innerRib: "ir",
   bottom: "b",
@@ -92,6 +93,11 @@ export function decodeParams(search: string, base: ShapeParams = DEFAULT_PARAMS)
   if (prof) {
     const arr = prof.split(",").map(Number);
     if (arr.length >= 2 && arr.length <= 16 && arr.every((x) => Number.isFinite(x) && x > 0.05 && x < 3)) p.profile = arr;
+  }
+  const tc = g("twistCurve");
+  if (tc) {
+    const arr = tc.split(",").map(Number);
+    if (arr.length >= 2 && arr.length <= 16 && arr.every((x) => Number.isFinite(x) && Math.abs(x) <= 3)) p.twistCurve = arr;
   }
   const lprof = g("lobeProfile");
   if (lprof) {

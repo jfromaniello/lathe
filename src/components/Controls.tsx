@@ -1,6 +1,6 @@
 "use client";
 
-import { effectiveRadialSegments, hasSplit, sanitize, wallRange, type ShapeParams, type Waveform, type Mode, type RibAlign, type HoleShape } from "@/lib/shape";
+import { effectiveRadialSegments, hasSplit, LINEAR_TWIST, sanitize, wallRange, type ShapeParams, type Waveform, type Mode, type RibAlign, type HoleShape } from "@/lib/shape";
 import { useT } from "@/i18n/context";
 import ProfileEditor from "./ProfileEditor";
 
@@ -86,6 +86,16 @@ export default function Controls({ params, onChange }: { params: ShapeParams; on
         <Slider label={t.radius} value={params.radius} min={10} max={150} step={0.5} unit="mm" onChange={(v) => set("radius", v)} />
         <Slider label={t.squareness} value={params.squareness} min={0} max={1} step={0.01} onChange={(v) => set("squareness", v)} />
         <Slider label={t.twist} value={params.twist} min={-360} max={360} unit="°" onChange={(v) => set("twist", v)} />
+        {params.twist !== 0 && (
+          <div>
+            <div className="mb-1 text-xs text-neutral-400">{t.twistCurve}</div>
+            <ProfileEditor profile={params.twistCurve} min={-1.5} mirror={false} onChange={(c) => set("twistCurve", c)} />
+            <p className="mt-1 text-[11px] text-neutral-500">{t.twistCurveHint}</p>
+            <button className="mt-1 text-xs text-neutral-500 hover:text-neutral-300" onClick={() => set("twistCurve", LINEAR_TWIST)}>
+              {t.resetTwistCurve}
+            </button>
+          </div>
+        )}
         <div>
           <div className="mb-1 text-xs text-neutral-400">{t.profile}</div>
           <ProfileEditor profile={params.profile} onChange={(p) => set("profile", p)} />

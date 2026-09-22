@@ -25,7 +25,8 @@ export interface ShapeParams {
   lobeAmplitude: number; // mm, swing of the lobes either side of the base profile
   lobeWaveform: Waveform;
   lobeProfile: number[]; // lobe amplitude multipliers, evenly spaced from z=0 (bottom) to z=height (top)
-  twist: number; // total degrees over full height
+  twist: number; // degrees, scaled by twistCurve (linear by default: the total over the full height)
+  twistCurve: number[]; // fraction of the twist reached at evenly spaced heights, bottom to top; [0 … 1] linear
   wall: number; // mm, measured at the deepest rib valley
   innerRib: number; // 0..1 how much of the rib pattern shows on the inside: 0 = smooth cavity (thicker at crests), 1 = constant wall
   bottom: number; // mm thickness, 0 = open
@@ -39,6 +40,9 @@ export interface ShapeParams {
   radialSegments: number;
   heightSegments: number;
 }
+
+/** Twist curve that turns at a constant rate. */
+export const LINEAR_TWIST = [0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1];
 
 export const DEFAULT_PARAMS: ShapeParams = {
   mode: "shell",
@@ -59,6 +63,7 @@ export const DEFAULT_PARAMS: ShapeParams = {
   lobeWaveform: "sine",
   lobeProfile: [0, 0.8, 1, 1, 1, 0.8, 0],
   twist: 0,
+  twistCurve: LINEAR_TWIST,
   wall: 1.2,
   innerRib: 0,
   bottom: 1.6,
@@ -185,18 +190,21 @@ function wave(kind: Waveform, p: number, sharp: number): number {
   }
 }
 
-/** Catmull-Rom interpolation over evenly spaced control points, t in [0,1]. */
-export function profileAt(profile: number[], t: number): number {
+/**
+ * Catmull-Rom interpolation over evenly spaced control points, t in [0,1]. The end tangents come from repeating the end
+ * points ("clamp", eases into the ends) or from extrapolating them ("extend", exact for points on a straight line).
+ */
+export function profileAt(profile: number[], t: number, ends: "clamp" | "extend" = "clamp"): number {
   const n = profile.length;
   if (n === 0) return 1;
   if (n === 1) return profile[0];
   const x = Math.min(1, Math.max(0, t)) * (n - 1);
   const i = Math.min(n - 2, Math.floor(x));
   const f = x - i;
-  const p0 = profile[Math.max(0, i - 1)];
   const p1 = profile[i];
   const p2 = profile[i + 1];
-  const p3 = profile[Math.min(n - 1, i + 2)];
+  const p0 = i > 0 ? profile[i - 1] : ends === "extend" ? 2 * p1 - p2 : p1;
+  const p3 = i + 2 < n ? profile[i + 2] : ends === "extend" ? 2 * p2 - p1 : p2;
   const f2 = f * f;
   const f3 = f2 * f;
   return (
@@ -279,6 +287,17 @@ export function ribDepthBelowBase(p: ShapeParams): number {
     default:
       return a;
   }
+}
+
+/** Rotation (radians) of the section at height fraction t; past the ends (a domed top) it carries on at the end slope. */
+export function twistAt(p: ShapeParams, t: number): number {
+  if (p.twist === 0) return 0;
+  const c = p.twistCurve;
+  const n = c.length;
+  let f = profileAt(c, t, "extend");
+  if (n >= 2 && t > 1) f += (t - 1) * (c[n - 1] - c[n - 2]) * (n - 1);
+  if (n >= 2 && t < 0) f += t * (c[1] - c[0]) * (n - 1);
+  return ((p.twist * Math.PI) / 180) * f;
 }
 
 /** Lobe amplitude multiplier at t in [0,1] of the height (never negative, even where the spline overshoots). */
@@ -395,7 +414,7 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
   const R = effectiveRadialSegments(p);
   const n = 2 + p.squareness * 10;
   const { thetaOf } = makeArcTable(n);
-  const twistRad = (p.twist * Math.PI) / 180;
+  const rotAt = (z: number) => twistAt(p, z / H);
   const fade = Math.max(0.01, p.ribFade);
   const zs = p.ribStart * H;
   const ze = p.ribEnd * H;
@@ -603,9 +622,9 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
       const rho = node.rho ?? 1;
       const zb = node.z;
       const env = envelope(zb);
-      const rot = twistRad * (zb / H);
+      const rot = rotAt(zb);
       const t = (1 - rho) / (1 - rhoH);
-      const rotH = twistRad * ((zb + domeZ(rhoH)) / H);
+      const rotH = rotAt(zb + domeZ(rhoH));
       const z = zb + domeZ(rho);
       for (let i = 0; i < R; i++) {
         const [bx, by] = superellipse(thetas[i] + rot, n);
@@ -630,7 +649,7 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
     }
     const z = node.z;
     const env = envelope(z);
-    const rot = twistRad * (z / H);
+    const rot = rotAt(z);
     for (let i = 0; i < R; i++) {
       const theta = thetas[i] + rot;
       const [bx, by] = superellipse(theta, n);

@@ -1,6 +1,6 @@
 import type * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { buildGeometry, buildParts, DEFAULT_PARAMS, effectiveRadialSegments, PRESETS, profileAt, sanitize, wallRange, type ShapeParams } from "./shape";
+import { buildGeometry, buildParts, DEFAULT_PARAMS, effectiveRadialSegments, PRESETS, profileAt, sanitize, twistAt, wallRange, type ShapeParams } from "./shape";
 import { analyzeMesh, isWatertight } from "@/test/mesh";
 
 const low = (p: ShapeParams): ShapeParams => ({ ...p, radialSegments: 96, heightSegments: 40 });
@@ -33,6 +33,8 @@ describe("buildGeometry produces watertight, outward-facing meshes", () => {
     ["lobes on a square section, closed domed top with a following hole", { ...DEFAULT_PARAMS, squareness: 0.6, lobeCount: 4, lobeAmplitude: 6, lobeProfile: [1, 1, 1], top: 2, topHole: 15, topDome: 6 }],
     ["inverted triangle lobes, open bottom", { ...DEFAULT_PARAMS, bottom: 0, lobeCount: 5, lobeAmplitude: -5, lobeWaveform: "triangle" }],
     ["solid with lobes", { ...DEFAULT_PARAMS, mode: "solid", lobeCount: 3, lobeAmplitude: 10, twist: 90 }],
+    ["S-shaped twist with lobes", { ...DEFAULT_PARAMS, lobeCount: 3, lobeAmplitude: 8, twist: 180, twistCurve: [0, 0.5, 1, 1, 1, 0.5, 0] }],
+    ["twist curve, domed top with a following hole", { ...DEFAULT_PARAMS, squareness: 0.8, twist: 120, twistCurve: [0, 0.1, 0.8, 1], top: 2, topHole: 20, topDome: 10 }],
   ];
   it.each(cases)("%s", (_name, params) => {
     const report = analyzeMesh(buildGeometry(low(params)));
@@ -316,8 +318,32 @@ describe("profileAt", () => {
     expect(profileAt(p, 0.5)).toBeCloseTo(1);
     expect(profileAt(p, 1)).toBeCloseTo(0.8);
   });
+  it("with extended ends reproduces a straight line exactly", () => {
+    for (const t of [0, 0.02, 0.1, 0.5, 0.97, 1]) expect(profileAt([0, 0.25, 0.5, 0.75, 1], t, "extend")).toBeCloseTo(t, 12);
+  });
+
   it("is constant for a flat profile", () => {
     for (let t = 0; t <= 1; t += 0.1) expect(profileAt([1, 1, 1, 1], t)).toBeCloseTo(1);
+  });
+});
+
+describe("twistAt", () => {
+  const deg = (p: ShapeParams, t: number) => (twistAt(p, t) * 180) / Math.PI;
+
+  it("turns at a constant rate with the default curve, also past the top (domes)", () => {
+    const p = { ...DEFAULT_PARAMS, twist: 90 };
+    for (const t of [0, 0.05, 0.3, 0.5, 0.93, 1, 1.1]) expect(deg(p, t)).toBeCloseTo(90 * t, 9);
+  });
+
+  it("follows the curve: an S goes out and comes back", () => {
+    const p = { ...DEFAULT_PARAMS, twist: 120, twistCurve: [0, 1, 0] };
+    expect(deg(p, 0)).toBeCloseTo(0, 9);
+    expect(deg(p, 0.5)).toBeCloseTo(120, 9);
+    expect(deg(p, 1)).toBeCloseTo(0, 9);
+  });
+
+  it("is zero without twist whatever the curve", () => {
+    expect(twistAt({ ...DEFAULT_PARAMS, twist: 0, twistCurve: [0, 1, 0] }, 0.5)).toBe(0);
   });
 });
 

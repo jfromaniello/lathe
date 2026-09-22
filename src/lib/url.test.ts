@@ -54,6 +54,12 @@ describe("url encoding", () => {
     expect(decodeParams(encodeParams(p))).toEqual(p);
   });
 
+  it("round-trips the twist curve and leaves the default out of the link", () => {
+    expect(encodeParams({ ...DEFAULT_PARAMS, twist: 90 })).toBe("tw=90");
+    const p = { ...DEFAULT_PARAMS, twist: 90, twistCurve: [0, 0.5, 1, 0.5, -0.25] };
+    expect(decodeParams(encodeParams(p))).toEqual(p);
+  });
+
   it("tolerates garbage and clamps out-of-range values", () => {
     const p = decodeParams("?h=abc&r=99999&rc=-5&rw=bogus&p=1,2,x&m=nope");
     expect(p.height).toBe(DEFAULT_PARAMS.height);

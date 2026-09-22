@@ -13,10 +13,12 @@ export default function ProfileEditor({
   profile,
   onChange,
   min = 0.15,
+  mirror = true,
 }: {
   profile: number[];
   onChange: (p: number[]) => void;
-  min?: number; // lowest value a point can be dragged to
+  min?: number; // lowest value a point can be dragged to (below 0 only without mirror)
+  mirror?: boolean; // draw a silhouette (both sides of the axis) or a single signed curve
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<number | null>(null);
@@ -31,7 +33,7 @@ export default function ProfileEditor({
   const steps = 60;
   for (let s = 0; s <= steps; s++) {
     const t = s / steps;
-    const m = profileAt(profile, t);
+    const m = profileAt(profile, t, mirror ? "clamp" : "extend");
     curve.push(`${xOf(m).toFixed(1)},${(H - PAD - (H - 2 * PAD) * t).toFixed(1)}`);
   }
   const right = curve.join(" ");
@@ -48,13 +50,13 @@ export default function ProfileEditor({
     if (drag === null || !svgRef.current) return;
     const rect = svgRef.current.getBoundingClientRect();
     const x = ((clientX - rect.left) / rect.width) * W;
-    let m = Math.abs(x - cx) / scaleX;
+    let m = (mirror ? Math.abs(x - cx) : x - cx) / scaleX;
     m = Math.min(MAX, Math.max(min, m));
 
     // snap to the other points' values and to 1.0 (hold Alt to disable)
     let snapTo: number | null = null;
     if (!altKey) {
-      const candidates = [1, ...(min <= 0 ? [0] : []), ...profile.filter((_, i) => i !== drag)];
+      const candidates = [1, ...(min <= 0 ? [0] : []), ...(min <= -1 ? [-1] : []), ...profile.filter((_, i) => i !== drag)];
       let best = SNAP;
       for (const c of candidates) {
         const d = Math.abs(m - c);
@@ -89,7 +91,11 @@ export default function ProfileEditor({
       <line x1={cx} y1={PAD} x2={cx} y2={H - PAD} stroke="#444" strokeDasharray="3 3" />
       <line x1={xOf(1)} y1={PAD} x2={xOf(1)} y2={H - PAD} stroke="#3a3a3a" strokeDasharray="2 4" />
       <line x1={2 * cx - xOf(1)} y1={PAD} x2={2 * cx - xOf(1)} y2={H - PAD} stroke="#3a3a3a" strokeDasharray="2 4" />
-      <polygon points={`${right} ${left}`} fill="#efe9df22" stroke="#efe9df" strokeWidth={1.5} strokeLinejoin="round" />
+      {mirror ? (
+        <polygon points={`${right} ${left}`} fill="#efe9df22" stroke="#efe9df" strokeWidth={1.5} strokeLinejoin="round" />
+      ) : (
+        <polyline points={right} fill="none" stroke="#efe9df" strokeWidth={1.5} strokeLinejoin="round" />
+      )}
       {snapped !== null && (
         <>
           <line x1={xOf(snapped)} y1={PAD - 4} x2={xOf(snapped)} y2={H - PAD + 4} stroke="#38bdf8" strokeWidth={1} />
@@ -100,7 +106,7 @@ export default function ProfileEditor({
         const isSnapTarget = snapped !== null && i !== drag && m === snapped;
         return (
           <g key={i}>
-            <line x1={2 * cx - xOf(m)} y1={yOf(i)} x2={xOf(m)} y2={yOf(i)} stroke="#f59e0b55" />
+            <line x1={mirror ? 2 * cx - xOf(m) : cx} y1={yOf(i)} x2={xOf(m)} y2={yOf(i)} stroke="#f59e0b55" />
             <circle
               cx={xOf(m)}
               cy={yOf(i)}
