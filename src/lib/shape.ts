@@ -487,12 +487,14 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
   const lobe = (u: number, z: number) =>
     hasLobes ? p.lobeAmplitude * lobeEnvelope(p, z / H) * wave(p.lobeWaveform, p.lobeCount * u, p.ribSharpness) : 0;
 
-  // inner surface: blend between "follows the ribs" (constant wall) and "smooth section" (wall measured at the valleys)
+  // inner surface: blend between "follows the ribs" (constant wall) and "smooth section" (wall measured at the deepest
+  // valley). The smooth section stays at that depth outside the rib band too, so the inside runs on without a step where
+  // the ribs start or end, and the plain zones get thicker by however far the alignment puts the valleys below the profile
   const ribDepth = ribDepthBelowBase(p);
   const innerScale = (u: number, z: number, env: number, bx: number, by: number) => {
     const outer = outerScale(u, z, env, bx, by);
     const k = p.innerRib;
-    const smooth = p.radius * profileAt(p.profile, z / H) + lobe(u, z) / (Math.hypot(bx, by) || 1) - env * ribDepth;
+    const smooth = p.radius * profileAt(p.profile, z / H) + lobe(u, z) / (Math.hypot(bx, by) || 1) - ribDepth;
     return Math.max(0.3, k * outer + (1 - k) * smooth - p.wall);
   };
 

@@ -300,6 +300,24 @@ describe("geometry dimensions", () => {
     expect(max).toBeCloseTo(38.3, 2);
   });
 
+  it.each([
+    ["center", 40 - 0.5 - 1.2],
+    ["crest", 40 - 1 - 1.2],
+    ["valley", 40 - 1.2],
+  ] as const)("a smooth inside runs on without a step past the rib band (%s alignment)", (ribAlign, r) => {
+    // ribs only in the middle third: the plain zones around them sit at the band's inner radius, whatever the alignment
+    const p = low({ ...ribbedShell, ribStart: 0.35, ribEnd: 0.65, ribAlign, innerRib: 0 });
+    const pos = buildGeometry(p).getAttribute("position").array;
+    const inner: number[] = [];
+    for (let i = 0; i < pos.length; i += 3) {
+      const z = pos[i + 2];
+      const rr = Math.hypot(pos[i], pos[i + 1]);
+      if (z > p.bottom + 0.01 && z < p.height - 0.01 && rr > 1 && rr < 39 - 0.05 && rr < r + 0.5) inner.push(rr);
+    }
+    expect(Math.min(...inner)).toBeCloseTo(r, 2);
+    expect(Math.max(...inner)).toBeCloseTo(r, 2);
+  });
+
   it("with the pattern inside the wall is constant", () => {
     const { min, max } = innerRadii({ ...ribbedShell, innerRib: 1 });
     expect(min).toBeCloseTo(38.3, 1);
