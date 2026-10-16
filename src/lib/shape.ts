@@ -34,6 +34,8 @@ export interface ShapeParams {
   topHole: number; // mm radius (half-width) of hole in the top (when top > 0)
   topHoleShape: HoleShape;
   topDome: number; // mm the top plate bulges at its centre: + convex (dome), - concave (dish), 0 = flat
+  slant: number; // mm the mouth drops from its highest to its lowest side (a plane cut instead of a flat one), 0 = flat
+  slantAngle: number; // degrees, direction the low side of the slanted mouth faces
   split: number; // 0 = one piece; else fraction of the height where the shell is cut in two pieces (shell only)
   splitLip: number; // mm height of the neck on the body that the top slides over
   splitGap: number; // mm clearance between the neck and the top
@@ -71,6 +73,8 @@ export const DEFAULT_PARAMS: ShapeParams = {
   topHole: 20,
   topHoleShape: "follow",
   topDome: 0,
+  slant: 0,
+  slantAngle: 0,
   split: 0,
   splitLip: 6,
   splitGap: 0.2,
@@ -354,6 +358,10 @@ export function sanitize(p: ShapeParams): ShapeParams {
     if (hi <= lo || cavity < 1) out.split = 0;
     else out.split = Math.min(hi, Math.max(lo, out.split * out.height)) / out.height;
   }
+  // slanted mouth: the wall is reshaped over twice the drop below the cut, which must stay above the floor and the joint
+  const floor = Math.max(out.mode === "shell" ? out.bottom : 0, out.split > 0 ? out.split * out.height + out.splitLip : 0) + 1;
+  out.slant = Math.min(Math.max(0, out.slant), Math.max(0, (slantTop(out) - floor) / 2));
+  if (out.slant < 0.01) out.slant = 0;
   return out;
 }
 
@@ -368,6 +376,11 @@ export function effectiveRadialSegments(p: ShapeParams, minPerRib = 6): number {
     return perRib * p.ribCount;
   }
   return wanted;
+}
+
+/** Height (at the high side) where the slant shifts the object rigidly: the ceiling of a closed top, else the top. */
+function slantTop(p: ShapeParams): number {
+  return p.mode === "shell" ? p.height - p.top : p.height;
 }
 
 export type Part = "whole" | "body" | "top";
@@ -415,6 +428,39 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
   const n = 2 + p.squareness * 10;
   const { thetaOf } = makeArcTable(n);
   const rotAt = (z: number) => twistAt(p, z / H);
+
+  // --- slanted mouth: a plane drops `slant` mm towards slantAngle. Above zt (the ceiling, or the top) everything is
+  // shifted down by the plane; between zc and zt the wall columns are squeezed progressively, and the shape is evaluated
+  // at the shifted height, so the wall stays the same surface (a true cut) rather than a sheared one ---
+  const hasSlant = p.slant > 0;
+  const zt = slantTop(p);
+  const zc = zt - 2 * p.slant;
+  const slantDir = (p.slantAngle * Math.PI) / 180;
+  const sdx = Math.cos(slantDir);
+  const sdy = Math.sin(slantDir);
+  let maxProj = 1;
+  if (hasSlant) {
+    for (let k = 0; k < 720; k++) {
+      const [x, y] = superellipse((k / 720) * TWO_PI, n);
+      maxProj = Math.max(maxProj, x * sdx + y * sdy);
+    }
+  }
+  /** Drop (0 … slant) for a unit-section direction (bx, by), or a point at that distance across the section. */
+  const dropAt = (proj: number) => Math.min(p.slant, Math.max(0, (p.slant * (1 + proj / maxProj)) / 2));
+  /** Height a wall column at angle theta is evaluated at, for a node at z. */
+  const wallZ = (theta: number, z: number) => {
+    if (!hasSlant || z <= zc) return z;
+    const w = Math.min(1, (z - zc) / (zt - zc));
+    let zz = z;
+    for (let k = 0; k < 3; k++) {
+      const [bx, by] = superellipse(theta + rotAt(zz), n);
+      zz = z - w * dropAt(bx * sdx + by * sdy);
+    }
+    return zz;
+  };
+  const plateA = p.radius * profileAt(p.profile, 1);
+  /** Top plate vertices (dome, hole, centre) move rigidly with the plane, by their position across the section. */
+  const plateZ = (x: number, y: number, z: number) => (hasSlant && z >= zt - 1e-9 ? z - dropAt((x * sdx + y * sdy) / plateA) : z);
   const fade = Math.max(0.01, p.ribFade);
   const zs = p.ribStart * H;
   const ze = p.ribEnd * H;
@@ -609,12 +655,12 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
   const emitRow = (node: Node): Row => {
     const start = positions.length / 3;
     if (node.kind === "center") {
-      positions.push(0, 0, node.z);
+      positions.push(0, 0, plateZ(0, 0, node.z));
       return { start, center: true, key: `c:${node.z.toFixed(5)}` };
     }
     if (node.kind === "fixed") {
       const r = node.r ?? 0;
-      for (let i = 0; i < R; i++) positions.push(r * cosT[i], r * sinT[i], node.z);
+      for (let i = 0; i < R; i++) positions.push(r * cosT[i], r * sinT[i], plateZ(r * cosT[i], r * sinT[i], node.z));
       return { start, center: false, key: `f:${r.toFixed(5)}:${node.z.toFixed(5)}` };
     }
     if (node.kind === "dome") {
@@ -643,27 +689,31 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
             yh = hy * p.topHole;
           }
         }
-        positions.push(x1 + (xh - x1) * t, y1 + (yh - y1) * t, z);
+        const x = x1 + (xh - x1) * t;
+        const y = y1 + (yh - y1) * t;
+        positions.push(x, y, plateZ(x, y, z));
       }
       return { start, center: false, key: `d:${zb.toFixed(5)}:${rho.toFixed(6)}` };
     }
-    const z = node.z;
-    const env = envelope(z);
-    const rot = rotAt(z);
     for (let i = 0; i < R; i++) {
-      const theta = thetas[i] + rot;
-      const [bx, by] = superellipse(theta, n);
-      let s: number;
       if (node.kind === "hole") {
         // the section's squareness and twist, but none of the ribs: half-width = topHole
-        s = p.topHole;
-      } else {
-        if (node.kind === "inner") s = innerScale(i / R, z, env, bx, by);
-        else if (node.kind === "offset") s = Math.max(0.3, innerScale(i / R, z, env, bx, by) - (node.off ?? 0));
-        else s = outerScale(i / R, z, env, bx, by);
+        const [bx, by] = superellipse(thetas[i] + rotAt(node.z), n);
+        const x = bx * p.topHole;
+        const y = by * p.topHole;
+        positions.push(x, y, plateZ(x, y, node.z));
+        continue;
       }
+      const z = wallZ(thetas[i], node.z);
+      const env = envelope(z);
+      const [bx, by] = superellipse(thetas[i] + rotAt(z), n);
+      let s: number;
+      if (node.kind === "inner") s = innerScale(i / R, z, env, bx, by);
+      else if (node.kind === "offset") s = Math.max(0.3, innerScale(i / R, z, env, bx, by) - (node.off ?? 0));
+      else s = outerScale(i / R, z, env, bx, by);
       positions.push(bx * s, by * s, z);
     }
+    const z = node.z;
     const off = node.kind === "offset" ? `:${(node.off ?? 0).toFixed(4)}` : "";
     return { start, center: false, key: `${node.kind}${off}:${z.toFixed(5)}` };
   };

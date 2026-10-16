@@ -34,6 +34,12 @@ describe("buildGeometry produces watertight, outward-facing meshes", () => {
     ["inverted triangle lobes, open bottom", { ...DEFAULT_PARAMS, bottom: 0, lobeCount: 5, lobeAmplitude: -5, lobeWaveform: "triangle" }],
     ["solid with lobes", { ...DEFAULT_PARAMS, mode: "solid", lobeCount: 3, lobeAmplitude: 10, twist: 90 }],
     ["S-shaped twist with lobes", { ...DEFAULT_PARAMS, lobeCount: 3, lobeAmplitude: 8, twist: 180, twistCurve: [0, 0.5, 1, 1, 1, 0.5, 0] }],
+    ["slanted mouth", { ...DEFAULT_PARAMS, slant: 40 }],
+    ["slanted mouth, square, twisted, lobes, ribs inside", { ...DEFAULT_PARAMS, squareness: 0.7, twist: 90, lobeCount: 3, lobeAmplitude: 6, innerRib: 1, slant: 30, slantAngle: 45 }],
+    ["slanted closed domed top with a following hole", { ...DEFAULT_PARAMS, squareness: 0.5, twist: 60, top: 2, topHole: 15, topDome: 6, slant: 25, slantAngle: 120 }],
+    ["slanted closed top, open bottom", { ...DEFAULT_PARAMS, bottom: 0, top: 2, topHole: 0, slant: 20 }],
+    ["slanted solid", { ...DEFAULT_PARAMS, mode: "solid", slant: 30, slantAngle: 200 }],
+    ["slanted solid dome", { ...DEFAULT_PARAMS, mode: "solid", topDome: 10, slant: 30 }],
     ["twist curve, domed top with a following hole", { ...DEFAULT_PARAMS, squareness: 0.8, twist: 120, twistCurve: [0, 0.1, 0.8, 1], top: 2, topHole: 20, topDome: 10 }],
   ];
   it.each(cases)("%s", (_name, params) => {
@@ -51,6 +57,7 @@ describe("two pieces", () => {
     ["ribs inside", { ...DEFAULT_PARAMS, innerRib: 1, split: 0.5 }],
     ["cut through the rib fade", { ...DEFAULT_PARAMS, ribStart: 0.2, ribEnd: 0.9, ribFade: 10, split: 0.88 }],
     ["lobes through the joint", { ...DEFAULT_PARAMS, lobeCount: 3, lobeAmplitude: 6, lobeProfile: [1, 1, 1], split: 0.6 }],
+    ["slanted mouth on the top piece", { ...DEFAULT_PARAMS, split: 0.6, slant: 30, slantAngle: 90 }],
   ];
   it.each(cases)("both pieces are watertight: %s", (_name, params) => {
     const parts = buildParts(low(params));
@@ -98,6 +105,27 @@ describe("two pieces", () => {
 });
 
 describe("geometry dimensions", () => {
+  it("a slanted mouth is cut by a plane: H at the high side, H - slant at the low side", () => {
+    const p = low({ ...DEFAULT_PARAMS, ribCount: 0, bottom: 0, slant: 30, slantAngle: 0 });
+    const geo = buildGeometry(p);
+    const pos = geo.getAttribute("position").array;
+    let above = 0;
+    let onPlane = 0;
+    for (let i = 0; i < pos.length; i += 3) {
+      const [x, y, z] = [pos[i], pos[i + 1], pos[i + 2]];
+      const plane = p.height - 15 - (15 * x) / Math.hypot(x, y); // low side towards +x
+      if (z > plane + 0.01) above++;
+      if (Math.abs(z - plane) < 0.01) onPlane++;
+    }
+    expect(above).toBe(0);
+    expect(onPlane).toBeGreaterThanOrEqual(2 * effectiveRadialSegments(p)); // outer and inner edge of the rim
+    expect(geo.boundingBox!.max.z).toBeCloseTo(p.height, 3);
+  });
+
+  it("sanitize keeps the slant above the floor", () => {
+    expect(sanitize({ ...DEFAULT_PARAMS, height: 50, bottom: 2, slant: 100 }).slant).toBeCloseTo((50 - 3) / 2, 5);
+  });
+
   it("matches height and diameter for a plain cylinder", () => {
     const geo = buildGeometry(low({ ...DEFAULT_PARAMS, ribCount: 0, profile: [1, 1, 1, 1, 1, 1, 1], radius: 40, height: 180 }));
     const bb = geo.boundingBox!;

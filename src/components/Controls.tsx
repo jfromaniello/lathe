@@ -97,6 +97,13 @@ export default function Controls({ params, onChange }: { params: ShapeParams; on
           </div>
         )}
         <div>
+          <Slider label={t.slant} value={params.slant} min={0} max={Math.round(params.height / 2)} step={0.5} unit="mm" onChange={(v) => set("slant", v)} />
+          <p className="mt-1 text-[11px] text-neutral-500">{t.slantHint}</p>
+        </div>
+        {params.slant > 0 && (
+          <Slider label={t.slantAngle} value={params.slantAngle} min={0} max={360} step={5} unit="°" onChange={(v) => set("slantAngle", v)} />
+        )}
+        <div>
           <div className="mb-1 text-xs text-neutral-400">{t.profile}</div>
           <ProfileEditor profile={params.profile} onChange={(p) => set("profile", p)} />
           <button className="mt-1 text-xs text-neutral-500 hover:text-neutral-300" onClick={() => set("profile", params.profile.map(() => 1))}>
