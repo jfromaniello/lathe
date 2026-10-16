@@ -1,11 +1,12 @@
 "use client";
 
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, ContactShadows, Environment, Lightformer, Html } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { buildGeometry, buildParts, type ShapeParams } from "@/lib/shape";
+import { buildGeometry, buildParts, type CutShape, type ShapeParams } from "@/lib/shape";
 import Handles from "./Handles";
+import CutTools, { type CutToolsHandle } from "./CutTools";
 
 import { renderColor, type CamView, type ViewSettings } from "@/lib/view";
 import { useT } from "@/i18n/context";
@@ -16,7 +17,17 @@ function Material({ view }: { view: ViewSettings }) {
   return <meshPhysicalMaterial color={view.color} roughness={0.35} transmission={0.82} thickness={4} ior={1.4} side={THREE.DoubleSide} />;
 }
 
-function Model({ params, view, onGeometry }: { params: ShapeParams; view: ViewSettings; onGeometry?: (g: THREE.BufferGeometry[]) => void }) {
+function Model({
+  params,
+  view,
+  onGeometry,
+  onPointerDown,
+}: {
+  params: ShapeParams;
+  view: ViewSettings;
+  onGeometry?: (g: THREE.BufferGeometry[]) => void;
+  onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
+}) {
   // a split design is rendered as its two pieces so they can be shown apart
   const geometries = useMemo(() => {
     const parts = buildParts(params);
@@ -29,7 +40,7 @@ function Model({ params, view, onGeometry }: { params: ShapeParams; view: ViewSe
   const lift = view.exploded && geometries.length > 1 ? params.splitLip + 12 : 0;
 
   return (
-    <group rotation={[-Math.PI / 2, 0, 0]}>
+    <group rotation={[-Math.PI / 2, 0, 0]} onPointerDown={onPointerDown}>
       {geometries.map((g, i) => (
         <mesh key={i} geometry={g} position={[0, 0, i === 1 ? lift : 0]} castShadow receiveShadow>
           <Material view={view} />
@@ -153,6 +164,9 @@ export default function Viewer({
   onChange,
   onGeometry,
   camRequest = null,
+  cutTool = null,
+  selectedCut = null,
+  onSelectCut = () => {},
 }: {
   params: ShapeParams;
   view: ViewSettings;
@@ -160,7 +174,12 @@ export default function Viewer({
   onGeometry?: (g: THREE.BufferGeometry[]) => void;
   /** Preset view to swing to; bump `n` to ask for the same view again. */
   camRequest?: { view: CamView; n: number } | null;
+  /** Hole punch picked: pressing the model starts drawing a hole. */
+  cutTool?: CutShape | null;
+  selectedCut?: number | null;
+  onSelectCut?: (i: number | null) => void;
 }) {
+  const cutHandle = useRef<CutToolsHandle | null>(null);
   // looking from under the floor: hide the floor so the base shows
   const [below, setBelow] = useState(false);
   const h = params.height;
@@ -192,7 +211,8 @@ export default function Viewer({
 
       <FitCamera dist={dist} h={h} />
       <CameraRig request={camRequest} dist={dist} h={h} onBelow={setBelow} />
-      <Model params={params} view={view} onGeometry={onGeometry} />
+      <Model params={params} view={view} onGeometry={onGeometry} onPointerDown={cutTool ? (e) => cutHandle.current?.onModelDown(e) : undefined} />
+      <CutTools params={params} onChange={onChange} tool={cutTool} selected={selectedCut} onSelect={onSelectCut} handleRef={cutHandle} />
       {lit && <pointLight position={[0, h * 0.5, 0]} color="#ffd39b" intensity={h * h * 0.9} decay={2} distance={h * 6} />}
 
       {!below && (

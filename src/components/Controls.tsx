@@ -8,7 +8,7 @@ const WAVEFORMS: Waveform[] = ["scallop", "sine", "triangle", "square"];
 const ALIGNS: RibAlign[] = ["center", "crest", "valley"];
 const HOLE_SHAPES: HoleShape[] = ["follow", "circle"];
 
-function Slider({
+export function Slider({
   label,
   value,
   min,
@@ -55,7 +55,7 @@ function Slider({
   );
 }
 
-function Section({ title, children, open = true }: { title: string; children: React.ReactNode; open?: boolean }) {
+export function Section({ title, children, open = true }: { title: string; children: React.ReactNode; open?: boolean }) {
   return (
     <details open={open} className="group border-t border-neutral-800 pt-3">
       <summary className="cursor-pointer text-sm font-medium text-neutral-200">{title}</summary>

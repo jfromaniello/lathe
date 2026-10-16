@@ -13,6 +13,17 @@ describe("url encoding", () => {
     expect(decodeParams(encodeParams(params))).toEqual(params);
   });
 
+  it("round-trips holes and drops malformed ones", () => {
+    const cuts = [
+      { shape: "circle" as const, mode: "through" as const, u: 0.25, z: 0.5, w: 20, h: 20, depth: 0 },
+      { shape: "square" as const, mode: "pocket" as const, u: 0.7, z: 0.3, w: 12, h: 30, depth: 1.5 },
+      { shape: "circle" as const, mode: "both" as const, u: 0.1, z: 0.8, w: 8, h: 8, depth: 0 },
+    ];
+    const qs = encodeParams({ ...DEFAULT_PARAMS, cuts });
+    expect(decodeParams(qs).cuts).toEqual(cuts);
+    expect(decodeParams("cut=c,t,0.5,0.5,10,10,0~x,t,1,1,1,1,1~s,q,1,1,1,1,1").cuts).toHaveLength(1);
+  });
+
   it("does not leak preview resolution into the link", () => {
     const qs = encodeParams({ ...DEFAULT_PARAMS, radialSegments: 720, heightSegments: 400 });
     expect(qs).toBe("");

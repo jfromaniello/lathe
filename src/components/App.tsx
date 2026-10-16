@@ -10,7 +10,8 @@ import HistoryStrip from "@/components/HistoryStrip";
 import ShareButton from "@/components/ShareButton";
 import Viewer from "@/components/Viewer";
 import { CAM_VIEWS, COLORS, DEFAULT_VIEW, type CamView, type MaterialKind, type ViewSettings } from "@/lib/view";
-import { DEFAULT_PARAMS, hasSplit, sanitize, type ShapeParams } from "@/lib/shape";
+import { DEFAULT_PARAMS, hasSplit, sanitize, type CutShape, type ShapeParams } from "@/lib/shape";
+import CutsPanel from "@/components/CutsPanel";
 import { downloadBlob, make3MFParts, makeSTL, makeSTLParts } from "@/lib/export";
 import { decodeParams, decodeView, encodeAll } from "@/lib/url";
 import { useHistory } from "@/hooks/useHistory";
@@ -25,6 +26,8 @@ export default function App() {
   const [stats, setStats] = useState<{ tris: number; x: number; y: number; z: number } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [cutTool, setCutTool] = useState<CutShape | null>(null);
+  const [selectedCut, setSelectedCut] = useState<number | null>(null);
   const [camRequest, setCamRequest] = useState<{ view: CamView; n: number } | null>(null);
   const lookFrom = useCallback((v: CamView) => setCamRequest((r) => ({ view: v, n: (r?.n ?? 0) + 1 })), []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
@@ -40,9 +43,20 @@ export default function App() {
     return () => clearTimeout(t);
   }, [params, view]);
 
-  // keyboard: ⌘K opens the settings palette, ⌘Z / ⌘⇧Z (or ctrl) undo / redo
+  // keyboard: ⌘K opens the settings palette, ⌘Z / ⌘⇧Z (or ctrl) undo / redo, Esc drops the punch, ⌫ deletes the picked hole
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const typing = e.target instanceof HTMLElement && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT");
+      if (e.key === "Escape" && !typing) {
+        setCutTool(null);
+        setSelectedCut(null);
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && !typing && selectedCut !== null && selectedCut < params.cuts.length) {
+        e.preventDefault();
+        setParams({ ...params, cuts: params.cuts.filter((_, i) => i !== selectedCut) });
+        setSelectedCut(null);
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen((o) => !o);
@@ -57,7 +71,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [history]);
+  }, [history, params, selectedCut, setParams]);
 
   const onGeometry = useCallback((gs: THREE.BufferGeometry[]) => {
     const box = new THREE.Box3();
@@ -138,6 +152,7 @@ export default function App() {
           <Gallery onPick={setParams} />
           <PatternPicker params={params} onChange={setParams} />
           <Controls params={params} onChange={setParams} />
+          <CutsPanel params={params} onChange={setParams} tool={cutTool} onTool={setCutTool} selected={selectedCut} onSelect={setSelectedCut} />
         </div>
         <div className="border-t border-neutral-800 p-4">
           {stats && (
@@ -161,7 +176,7 @@ export default function App() {
       </aside>
 
       <section className="relative h-[45dvh] shrink-0 md:h-auto md:flex-1">
-        <Viewer params={params} view={view} onChange={setParams} onGeometry={onGeometry} camRequest={camRequest} />
+        <Viewer params={params} view={view} onChange={setParams} onGeometry={onGeometry} camRequest={camRequest} cutTool={cutTool} selectedCut={selectedCut} onSelectCut={setSelectedCut} />
         {paletteOpen && <CommandPalette onClose={closePalette} params={params} onChange={setParams} view={view} onView={setView} onExport={exportMain} onCamView={lookFrom} />}
 
         {/* floating view toolbar */}
@@ -214,6 +229,19 @@ export default function App() {
               {t.viewer.scale}
             </button>
           </div>
+          <div className="pointer-events-auto flex items-center gap-0.5 rounded-xl border border-black/10 bg-white/70 p-1 shadow-lg backdrop-blur md:p-1.5">
+            {(["circle", "square"] as CutShape[]).map((s) => (
+              <button
+                key={s}
+                onClick={() => setCutTool(cutTool === s ? null : s)}
+                className={`rounded-lg px-2 py-0.5 text-[11px] font-medium transition md:px-2.5 md:py-1 md:text-xs ${cutTool === s ? "bg-amber-500 text-black" : "text-neutral-700 hover:bg-black/5"}`}
+                title={t.cuts.hint}
+              >
+                {t.cuts[s]}
+              </button>
+            ))}
+          </div>
+          {cutTool && <div className="rounded-lg bg-neutral-900/80 px-2 py-1 text-[11px] text-white">{t.cuts.toolOn}</div>}
           <div className="pointer-events-auto flex items-center gap-0.5 rounded-xl border border-black/10 bg-white/70 p-1 shadow-lg backdrop-blur md:p-1.5" title={t.viewer.viewsHint}>
             {CAM_VIEWS.map((v) => (
               <button

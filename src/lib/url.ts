@@ -1,4 +1,4 @@
-import { DEFAULT_PARAMS, type ShapeParams, type Waveform, type Mode, type RibAlign, type HoleShape } from "./shape";
+import { DEFAULT_PARAMS, type Cut, type CutMode, type ShapeParams, type Waveform, type Mode, type RibAlign, type HoleShape } from "./shape";
 import { DEFAULT_VIEW, MATERIALS, type MaterialKind, type ViewSettings } from "./view";
 
 // short URL keys for each param
@@ -34,6 +34,7 @@ const KEYS: Record<keyof ShapeParams, string> = {
   split: "sp",
   splitLip: "sl",
   splitGap: "sg",
+  cuts: "cut",
   radialSegments: "seg",
   heightSegments: "hseg",
 };
@@ -45,6 +46,22 @@ const HOLE_SHAPES: HoleShape[] = ["circle", "follow"];
 
 const fmt = (n: number) => String(Math.round(n * 1000) / 1000);
 
+// cuts: "shape,mode,u,z,w,h,depth" joined by "~", shape c|s and mode p|t|b (pocket / through / both sides)
+const CUT_MODES: Record<string, CutMode> = { p: "pocket", t: "through", b: "both" };
+const encodeCuts = (cuts: Cut[]) =>
+  cuts.map((c) => [c.shape === "circle" ? "c" : "s", c.mode[0], fmt(c.u), fmt(c.z), fmt(c.w), fmt(c.h), fmt(c.depth)].join(",")).join("~");
+function decodeCuts(s: string): Cut[] {
+  const out: Cut[] = [];
+  for (const item of s.split("~").slice(0, 64)) {
+    const [shape, mode, ...rest] = item.split(",");
+    const [u, z, w, h, depth] = rest.map(Number);
+    if ((shape !== "c" && shape !== "s") || !CUT_MODES[mode] || ![u, z, w, h, depth].every(Number.isFinite)) continue;
+    const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+    out.push({ shape: shape === "c" ? "circle" : "square", mode: CUT_MODES[mode], u: u - Math.floor(u), z: clamp(z, 0, 1), w: clamp(w, 1, 500), h: clamp(h, 1, 500), depth: clamp(depth, 0, 50) });
+  }
+  return out;
+}
+
 /** Query string (without '?') containing only the params that differ from the defaults. */
 export function encodeParams(p: ShapeParams): string {
   const q = new URLSearchParams();
@@ -52,9 +69,11 @@ export function encodeParams(p: ShapeParams): string {
     if (PREVIEW_ONLY.includes(key)) continue;
     const v = p[key];
     const d = DEFAULT_PARAMS[key];
-    if (Array.isArray(v)) {
+    if (key === "cuts") {
+      if (p.cuts.length > 0) q.set(KEYS.cuts, encodeCuts(p.cuts));
+    } else if (Array.isArray(v)) {
       if (v.every((x, i) => x === (d as number[])[i]) && v.length === (d as number[]).length) continue;
-      q.set(KEYS[key], v.map(fmt).join(","));
+      q.set(KEYS[key], (v as number[]).map(fmt).join(","));
     } else if (typeof v === "number") {
       if (v === d) continue;
       q.set(KEYS[key], fmt(v));
@@ -127,6 +146,8 @@ export function decodeParams(search: string, base: ShapeParams = DEFAULT_PARAMS)
   p.topDome = num(g("topDome"), -500, 500) ?? p.topDome;
   p.slant = num(g("slant"), 0, 500) ?? p.slant;
   p.slantAngle = num(g("slantAngle"), -360, 360) ?? p.slantAngle;
+  const cuts = g("cuts");
+  if (cuts !== null) p.cuts = decodeCuts(cuts);
   p.split = num(g("split"), 0, 1) ?? p.split;
   p.splitLip = num(g("splitLip"), 1, 100) ?? p.splitLip;
   p.splitGap = num(g("splitGap"), 0, 5) ?? p.splitGap;

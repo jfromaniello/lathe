@@ -1,6 +1,6 @@
 import type * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { buildGeometry, buildParts, DEFAULT_PARAMS, effectiveRadialSegments, PRESETS, profileAt, sanitize, twistAt, wallRange, type ShapeParams } from "./shape";
+import { buildGeometry, buildParts, DEFAULT_PARAMS, effectiveRadialSegments, placeCuts, PRESETS, profileAt, sanitize, twistAt, wallRange, type Cut, type ShapeParams } from "./shape";
 import { analyzeMesh, isWatertight } from "@/test/mesh";
 
 const low = (p: ShapeParams): ShapeParams => ({ ...p, radialSegments: 96, heightSegments: 40 });
@@ -47,6 +47,71 @@ describe("buildGeometry produces watertight, outward-facing meshes", () => {
   it.each(cases)("%s", (_name, params) => {
     const report = analyzeMesh(buildGeometry(low(params)));
     expect(report, JSON.stringify(report)).toSatisfy(isWatertight);
+  });
+});
+
+describe("holes in the wall", () => {
+  const hole = (o: Partial<Cut>): Cut => ({ shape: "circle", mode: "through", u: 0.1, z: 0.5, w: 20, h: 20, depth: 0, ...o });
+  const cases: [string, ShapeParams][] = [
+    ["round hole through the wall", { ...DEFAULT_PARAMS, cuts: [hole({})] }],
+    ["square hole through the wall", { ...DEFAULT_PARAMS, cuts: [hole({ shape: "square", w: 24, h: 14 })] }],
+    ["round pocket", { ...DEFAULT_PARAMS, wall: 3, cuts: [hole({ mode: "pocket", depth: 1.5 })] }],
+    ["square pocket", { ...DEFAULT_PARAMS, wall: 3, cuts: [hole({ shape: "square", mode: "pocket", depth: 2, w: 16, h: 30 })] }],
+    ["hole over the seam", { ...DEFAULT_PARAMS, cuts: [hole({ u: 0.995 })] }],
+    ["through both sides", { ...DEFAULT_PARAMS, cuts: [hole({ mode: "both", w: 16 })] }],
+    ["several holes, ribs, twist, square section, ribs inside", { ...DEFAULT_PARAMS, squareness: 0.6, twist: 90, innerRib: 1, cuts: [hole({}), hole({ u: 0.4, z: 0.3, shape: "square", w: 10, h: 30 }), hole({ u: 0.7, z: 0.7, w: 8 })] }],
+    ["holes through the rib band edge and under a slanted mouth", { ...DEFAULT_PARAMS, ribStart: 0.4, slant: 30, cuts: [hole({ z: 0.4 }), hole({ u: 0.5, z: 0.8 })] }],
+    ["holes on a lamp with a closed top", { ...PRESETS[1].params, cuts: [hole({ u: 0.25, z: 0.4, w: 12 }), hole({ u: 0.75, z: 0.4, w: 12, shape: "square" })] }],
+    ["round notch through the open rim", { ...DEFAULT_PARAMS, cuts: [hole({ z: 0.98, w: 24 })] }],
+    ["square notch, side to side, under a slanted mouth", { ...DEFAULT_PARAMS, slant: 25, cuts: [hole({ shape: "square", mode: "both", z: 0.97, w: 14, h: 20 })] }],
+    ["notch over the seam with ribs inside", { ...DEFAULT_PARAMS, innerRib: 1, twist: 60, cuts: [hole({ u: 0.998, z: 1, w: 18 })] }],
+    ["tiny hole inside a single coarse cell", { ...DEFAULT_PARAMS, heightSegments: 8, radialSegments: 24, ribCount: 0, cuts: [hole({ w: 2 })] }],
+  ];
+  it.each(cases)("stays watertight: %s", (_name, params) => {
+    const report = analyzeMesh(buildGeometry(low(params)));
+    expect(report, JSON.stringify(report)).toSatisfy(isWatertight);
+  });
+
+  it("keeps its size under a slanted mouth, where the rows are squeezed (round on the real surface)", () => {
+    const base = low({ ...DEFAULT_PARAMS, height: 146, radius: 60, ribCount: 0, ribEnd: 0.94, ribFade: 2, slant: 34 });
+    const removed = (p: ShapeParams) => analyzeMesh(buildGeometry(p)).volume - analyzeMesh(buildGeometry({ ...p, cuts: [hole({ u: 0.01, z: 100 / 146, w: 18 })] })).volume;
+    const slanted = removed(base);
+    const level = removed({ ...base, slant: 0 });
+    expect(slanted / level).toBeGreaterThan(0.9);
+    expect(slanted / level).toBeLessThan(1.1);
+  });
+
+  it("a notch removes about half a hole when centred on the rim", () => {
+    const base = low({ ...DEFAULT_PARAMS, ribCount: 0 });
+    const v0 = analyzeMesh(buildGeometry(base)).volume;
+    const half = v0 - analyzeMesh(buildGeometry({ ...base, cuts: [hole({ w: 20, z: 1 })] })).volume;
+    const full = v0 - analyzeMesh(buildGeometry({ ...base, cuts: [hole({ w: 20, z: 0.5 })] })).volume;
+    expect(half / full).toBeCloseTo(0.5, 1);
+  });
+
+  it("removes material: a hole lowers the volume by about its size × the wall", () => {
+    const base = low({ ...DEFAULT_PARAMS, ribCount: 0 });
+    const v0 = analyzeMesh(buildGeometry(base)).volume;
+    const v1 = analyzeMesh(buildGeometry({ ...base, cuts: [hole({ w: 20 })] })).volume;
+    const expected = Math.PI * 10 * 10 * 1.2;
+    expect(v0 - v1).toBeGreaterThan(expected * 0.85);
+    expect(v0 - v1).toBeLessThan(expected * 1.15);
+    const v2 = analyzeMesh(buildGeometry({ ...base, cuts: [hole({ w: 20, mode: "both" })] })).volume;
+    expect((v0 - v2) / (v0 - v1)).toBeCloseTo(2, 1);
+  });
+
+  it("is watertight in the two pieces of a split design", () => {
+    const parts = buildParts(low({ ...DEFAULT_PARAMS, split: 0.6, cuts: [hole({ z: 0.3 }), hole({ z: 0.85, u: 0.5, w: 12 }), hole({ z: 0.99, u: 0.25, w: 20 })] }))!;
+    expect(analyzeMesh(parts.body), "body").toSatisfy(isWatertight);
+    expect(analyzeMesh(parts.top), "top").toSatisfy(isWatertight);
+  });
+
+  it("reports cuts that can't be made", () => {
+    const { problems } = placeCuts({ ...DEFAULT_PARAMS, cuts: [hole({}), hole({ u: 0.12 }), hole({ z: 0.99 }), hole({ mode: "pocket", depth: 0.05 })] });
+    expect(problems).toEqual([null, "overlap", null, "thin"]); // near the open rim it is a notch
+    expect(placeCuts({ ...DEFAULT_PARAMS, top: 2, cuts: [hole({ z: 0.99 })] }).problems).toEqual(["edge"]);
+    expect(placeCuts({ ...DEFAULT_PARAMS, cuts: [hole({ z: 0.99, mode: "pocket", depth: 0.5 })] }).problems).toEqual(["edge"]);
+    expect(placeCuts({ ...DEFAULT_PARAMS, mode: "solid", cuts: [hole({})] }).problems).toEqual(["solid"]);
   });
 });
 
