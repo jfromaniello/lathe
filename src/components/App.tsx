@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import * as THREE from "three";
+import CommandPalette from "@/components/CommandPalette";
 import Controls from "@/components/Controls";
 import Gallery from "@/components/Gallery";
 import PatternPicker from "@/components/PatternPicker";
@@ -23,6 +24,8 @@ export default function App() {
   const [view, setView] = useState<ViewSettings>(() => decodeView(window.location.search, DEFAULT_VIEW));
   const [stats, setStats] = useState<{ tris: number; x: number; y: number; z: number } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
   const t = useT();
 
   // keep the address bar in sync so the URL is always shareable
@@ -35,9 +38,14 @@ export default function App() {
     return () => clearTimeout(t);
   }, [params, view]);
 
-  // keyboard: ⌘Z / ⌘⇧Z (or ctrl)
+  // keyboard: ⌘K opens the settings palette, ⌘Z / ⌘⇧Z (or ctrl) undo / redo
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      }
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
@@ -117,6 +125,13 @@ export default function App() {
             <ShareButton params={params} view={view} />
           </div>
         </div>
+        <button
+          onClick={() => setPaletteOpen(true)}
+          className="mx-4 mt-3 flex items-center justify-between rounded-md border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-500 hover:border-neutral-700 hover:text-neutral-300"
+        >
+          <span>{t.palette.open}…</span>
+          <kbd className="rounded bg-neutral-800 px-1.5 py-0.5 font-sans text-[10px] text-neutral-400">⌘K</kbd>
+        </button>
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
           <Gallery onPick={setParams} />
           <PatternPicker params={params} onChange={setParams} />
@@ -145,6 +160,7 @@ export default function App() {
 
       <section className="relative h-[45dvh] shrink-0 md:h-auto md:flex-1">
         <Viewer params={params} view={view} onChange={setParams} onGeometry={onGeometry} />
+        {paletteOpen && <CommandPalette onClose={closePalette} params={params} onChange={setParams} view={view} onView={setView} onExport={exportMain} />}
 
         {/* floating view toolbar */}
         <div className="pointer-events-none absolute right-2 top-2 flex max-w-[calc(100%-1rem)] flex-col items-end gap-1.5 md:right-3 md:top-3 md:gap-2">

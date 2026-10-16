@@ -358,9 +358,8 @@ export function sanitize(p: ShapeParams): ShapeParams {
     if (hi <= lo || cavity < 1) out.split = 0;
     else out.split = Math.min(hi, Math.max(lo, out.split * out.height)) / out.height;
   }
-  // slanted mouth: the wall is reshaped over twice the drop below the cut, which must stay above the floor and the joint
-  const floor = Math.max(out.mode === "shell" ? out.bottom : 0, out.split > 0 ? out.split * out.height + out.splitLip : 0) + 1;
-  out.slant = Math.min(Math.max(0, out.slant), Math.max(0, (slantTop(out) - floor) / 2));
+  // slanted mouth: the rows are squeezed over SLANT_RAMP × the drop below the cut, which must stay above the floor and the joint
+  out.slant = Math.min(Math.max(0, out.slant), Math.max(0, (slantTop(out) - slantFloor(out)) / SLANT_RAMP));
   if (out.slant < 0.01) out.slant = 0;
   return out;
 }
@@ -378,9 +377,17 @@ export function effectiveRadialSegments(p: ShapeParams, minPerRib = 6): number {
   return wanted;
 }
 
+/** Length of the squeeze below a slant-shifted zone, in units of the drop (> 1, so the rows stay in order). */
+const SLANT_RAMP = 1.25;
+
 /** Height (at the high side) where the slant shifts the object rigidly: the ceiling of a closed top, else the top. */
 function slantTop(p: ShapeParams): number {
   return p.mode === "shell" ? p.height - p.top : p.height;
+}
+
+/** Lowest height the slant may reshape: above the floor and the joint of a two-piece design. */
+function slantFloor(p: ShapeParams): number {
+  return Math.max(p.mode === "shell" ? p.bottom : 0, p.split > 0 ? p.split * p.height + p.splitLip : 0) + 1;
 }
 
 export type Part = "whole" | "body" | "top";
@@ -429,12 +436,24 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
   const { thetaOf } = makeArcTable(n);
   const rotAt = (z: number) => twistAt(p, z / H);
 
-  // --- slanted mouth: a plane drops `slant` mm towards slantAngle. Above zt (the ceiling, or the top) everything is
-  // shifted down by the plane; between zc and zt the wall columns are squeezed progressively, and the shape is evaluated
-  // at the shifted height, so the wall stays the same surface (a true cut) rather than a sheared one ---
+  const fade = Math.max(0.01, p.ribFade);
+  const zs = p.ribStart * H;
+  const ze = p.ribEnd * H;
+  const hasRibs = p.ribCount > 0 && p.ribAmplitude !== 0;
+
+  // --- slanted mouth: a plane drops `slant` mm towards slantAngle. Above zHi the wall rows are shifted down by the
+  // plane (below zHi - SLANT_RAMP·slant they stay put, in between they are squeezed progressively). The shape is evaluated at the
+  // shifted height, so the wall stays the same surface (a true cut), but the rib band is evaluated at the row's own
+  // height: its edges above zHi run parallel to the cut instead of level. zHi is the lowest rib edge with room for the
+  // squeeze above the floor (and the joint of a two-piece design), or the top itself ---
   const hasSlant = p.slant > 0;
   const zt = slantTop(p);
-  const zc = zt - 2 * p.slant;
+  let zHi = zt;
+  if (hasSlant && hasRibs) {
+    const edges = [p.ribStart > 0 ? zs - fade / 2 : Infinity, p.ribEnd < 1 ? ze - fade / 2 : Infinity];
+    for (const e of edges) if (e - 0.5 - SLANT_RAMP * p.slant >= slantFloor(p)) zHi = Math.min(zHi, e - 0.5);
+  }
+  const zc = zHi - SLANT_RAMP * p.slant;
   const slantDir = (p.slantAngle * Math.PI) / 180;
   const sdx = Math.cos(slantDir);
   const sdy = Math.sin(slantDir);
@@ -450,7 +469,7 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
   /** Height a wall column at angle theta is evaluated at, for a node at z. */
   const wallZ = (theta: number, z: number) => {
     if (!hasSlant || z <= zc) return z;
-    const w = Math.min(1, (z - zc) / (zt - zc));
+    const w = Math.min(1, (z - zc) / (zHi - zc));
     let zz = z;
     for (let k = 0; k < 3; k++) {
       const [bx, by] = superellipse(theta + rotAt(zz), n);
@@ -461,10 +480,6 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
   const plateA = p.radius * profileAt(p.profile, 1);
   /** Top plate vertices (dome, hole, centre) move rigidly with the plane, by their position across the section. */
   const plateZ = (x: number, y: number, z: number) => (hasSlant && z >= zt - 1e-9 ? z - dropAt((x * sdx + y * sdy) / plateA) : z);
-  const fade = Math.max(0.01, p.ribFade);
-  const zs = p.ribStart * H;
-  const ze = p.ribEnd * H;
-  const hasRibs = p.ribCount > 0 && p.ribAmplitude !== 0;
   const ribOffset = p.ribAlign === "crest" ? -1 : p.ribAlign === "valley" ? 1 : 0;
   const hasLobes = p.lobeCount > 0 && p.lobeAmplitude !== 0;
   /** Lobes are part of the section (mm, along the base direction): both surfaces follow them, unlike the ribs. (A square
@@ -705,7 +720,7 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
         continue;
       }
       const z = wallZ(thetas[i], node.z);
-      const env = envelope(z);
+      const env = envelope(node.z);
       const [bx, by] = superellipse(thetas[i] + rotAt(z), n);
       let s: number;
       if (node.kind === "inner") s = innerScale(i / R, z, env, bx, by);

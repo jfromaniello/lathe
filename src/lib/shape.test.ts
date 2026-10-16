@@ -35,6 +35,8 @@ describe("buildGeometry produces watertight, outward-facing meshes", () => {
     ["solid with lobes", { ...DEFAULT_PARAMS, mode: "solid", lobeCount: 3, lobeAmplitude: 10, twist: 90 }],
     ["S-shaped twist with lobes", { ...DEFAULT_PARAMS, lobeCount: 3, lobeAmplitude: 8, twist: 180, twistCurve: [0, 0.5, 1, 1, 1, 0.5, 0] }],
     ["slanted mouth", { ...DEFAULT_PARAMS, slant: 40 }],
+    ["slanted mouth, rib band edges follow it (with fade)", { ...DEFAULT_PARAMS, ribStart: 0.4, ribEnd: 0.8, ribFade: 6, slant: 25, twist: 45 }],
+    ["slanted mouth, rib edge too low to follow it", { ...DEFAULT_PARAMS, ribStart: 0.05, slant: 40 }],
     ["slanted mouth, square, twisted, lobes, ribs inside", { ...DEFAULT_PARAMS, squareness: 0.7, twist: 90, lobeCount: 3, lobeAmplitude: 6, innerRib: 1, slant: 30, slantAngle: 45 }],
     ["slanted closed domed top with a following hole", { ...DEFAULT_PARAMS, squareness: 0.5, twist: 60, top: 2, topHole: 15, topDome: 6, slant: 25, slantAngle: 120 }],
     ["slanted closed top, open bottom", { ...DEFAULT_PARAMS, bottom: 0, top: 2, topHole: 0, slant: 20 }],
@@ -122,8 +124,25 @@ describe("geometry dimensions", () => {
     expect(geo.boundingBox!.max.z).toBeCloseTo(p.height, 3);
   });
 
+  it("with a slanted mouth the edge of the rib band runs parallel to the cut", () => {
+    // ribs from 30% (54 mm) up, scallop valleys at u = 0 and 0.5; the low side is +x, 30 mm lower
+    const p = low({ ...DEFAULT_PARAMS, mode: "solid", slant: 30, slantAngle: 0 });
+    const zs = p.ribStart * p.height;
+    const pos = buildGeometry(p).getAttribute("position").array;
+    let lowSideRibbed = false;
+    let highSideRibbed = false;
+    for (let i = 0; i < pos.length; i += 3) {
+      const [x, y, z] = [pos[i], pos[i + 1], pos[i + 2]];
+      if (Math.abs(y) > 1e-6 || z < zs - 25 || z > zs - 5 || Math.abs(x) < 30) continue;
+      if (x > 0 && x < 39.5) lowSideRibbed = true;
+      if (x < 0 && x > -39.5) highSideRibbed = true;
+    }
+    expect(lowSideRibbed).toBe(true);
+    expect(highSideRibbed).toBe(false);
+  });
+
   it("sanitize keeps the slant above the floor", () => {
-    expect(sanitize({ ...DEFAULT_PARAMS, height: 50, bottom: 2, slant: 100 }).slant).toBeCloseTo((50 - 3) / 2, 5);
+    expect(sanitize({ ...DEFAULT_PARAMS, height: 50, bottom: 2, slant: 100 }).slant).toBeCloseTo((50 - 3) / 1.25, 5);
   });
 
   it("matches height and diameter for a plain cylinder", () => {
