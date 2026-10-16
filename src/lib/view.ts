@@ -1,3 +1,7 @@
+/** Preset camera views: the default three-quarter one, and straight on from each side. */
+export type CamView = "iso" | "front" | "back" | "left" | "right" | "top" | "bottom";
+export const CAM_VIEWS: CamView[] = ["iso", "front", "back", "left", "right", "top", "bottom"];
+
 export type MaterialKind = "matte" | "wood" | "glass";
 
 export interface ViewSettings {

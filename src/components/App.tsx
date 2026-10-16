@@ -9,7 +9,7 @@ import PatternPicker from "@/components/PatternPicker";
 import HistoryStrip from "@/components/HistoryStrip";
 import ShareButton from "@/components/ShareButton";
 import Viewer from "@/components/Viewer";
-import { COLORS, DEFAULT_VIEW, type MaterialKind, type ViewSettings } from "@/lib/view";
+import { CAM_VIEWS, COLORS, DEFAULT_VIEW, type CamView, type MaterialKind, type ViewSettings } from "@/lib/view";
 import { DEFAULT_PARAMS, hasSplit, sanitize, type ShapeParams } from "@/lib/shape";
 import { downloadBlob, make3MFParts, makeSTL, makeSTLParts } from "@/lib/export";
 import { decodeParams, decodeView, encodeAll } from "@/lib/url";
@@ -25,6 +25,8 @@ export default function App() {
   const [stats, setStats] = useState<{ tris: number; x: number; y: number; z: number } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [camRequest, setCamRequest] = useState<{ view: CamView; n: number } | null>(null);
+  const lookFrom = useCallback((v: CamView) => setCamRequest((r) => ({ view: v, n: (r?.n ?? 0) + 1 })), []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
   const t = useT();
 
@@ -159,8 +161,8 @@ export default function App() {
       </aside>
 
       <section className="relative h-[45dvh] shrink-0 md:h-auto md:flex-1">
-        <Viewer params={params} view={view} onChange={setParams} onGeometry={onGeometry} />
-        {paletteOpen && <CommandPalette onClose={closePalette} params={params} onChange={setParams} view={view} onView={setView} onExport={exportMain} />}
+        <Viewer params={params} view={view} onChange={setParams} onGeometry={onGeometry} camRequest={camRequest} />
+        {paletteOpen && <CommandPalette onClose={closePalette} params={params} onChange={setParams} view={view} onView={setView} onExport={exportMain} onCamView={lookFrom} />}
 
         {/* floating view toolbar */}
         <div className="pointer-events-none absolute right-2 top-2 flex max-w-[calc(100%-1rem)] flex-col items-end gap-1.5 md:right-3 md:top-3 md:gap-2">
@@ -211,6 +213,17 @@ export default function App() {
             >
               {t.viewer.scale}
             </button>
+          </div>
+          <div className="pointer-events-auto flex items-center gap-0.5 rounded-xl border border-black/10 bg-white/70 p-1 shadow-lg backdrop-blur md:p-1.5" title={t.viewer.viewsHint}>
+            {CAM_VIEWS.map((v) => (
+              <button
+                key={v}
+                onClick={() => lookFrom(v)}
+                className="rounded-lg px-1.5 py-0.5 text-[11px] font-medium text-neutral-700 transition hover:bg-black/5 md:px-2 md:py-1 md:text-xs"
+              >
+                {t.viewer.views[v]}
+              </button>
+            ))}
           </div>
         </div>
 

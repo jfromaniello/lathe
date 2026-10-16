@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { clampStep, matchOption, parseQuery, searchCommands, shapeCommands, type ChoiceCommand, type Command, type NumberCommand } from "@/lib/commands";
 import { GALLERY, PATTERNS, applyPattern, galleryName, patternName, randomParams } from "@/lib/patterns";
-import { COLORS, MATERIALS, type ViewSettings } from "@/lib/view";
+import { CAM_VIEWS, COLORS, MATERIALS, type CamView, type ViewSettings } from "@/lib/view";
 import type { ShapeParams } from "@/lib/shape";
 import { useLang, useT } from "@/i18n/context";
 
@@ -28,6 +28,16 @@ const speechCtor = (): (new () => Recognition) | undefined => {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 };
 
+const CAM_KEYWORDS: Record<CamView, string> = {
+  iso: "3d perspective default perspectiva",
+  front: "front frente frontal",
+  back: "back rear atrás detrás",
+  left: "left side izquierda lado",
+  right: "right side derecha lado",
+  top: "top above plan arriba planta desde arriba",
+  bottom: "bottom below base underside abajo base debajo",
+};
+
 const fmtNum = (cmd: NumberCommand, v: number) => {
   const decimals = cmd.step >= 1 ? 0 : cmd.step >= 0.1 ? 1 : 2;
   return `${v.toFixed(decimals)}${cmd.unit ? ` ${cmd.unit}` : ""}`;
@@ -43,6 +53,7 @@ export default function CommandPalette({
   view,
   onView,
   onExport,
+  onCamView,
 }: {
   onClose: () => void;
   params: ShapeParams;
@@ -50,6 +61,7 @@ export default function CommandPalette({
   view: ViewSettings;
   onView: (v: ViewSettings) => void;
   onExport: () => void;
+  onCamView: (v: CamView) => void;
 }) {
   const t = useT();
   const lang = useLang();
@@ -123,9 +135,19 @@ export default function CommandPalette({
       viewChoice("color", tp.color, "color colour paint pintar", COLORS.map((c) => ({ value: c.hex, label: t.colors[c.id] }))),
       toggle("showHandles", t.viewer.handles.replace(/^\S+\s*/, ""), "handles drag manijas arrastrar"),
       toggle("showMug", t.viewer.scale.replace(/^\S+\s*/, ""), "scale mug size cup taza escala tamaño"),
+      ...CAM_VIEWS.map(
+        (v): Command => ({
+          kind: "action",
+          id: `camera:${v}`,
+          group: tp.camera,
+          label: t.viewer.views[v],
+          keywords: `view camera look vista cámara mirar ${CAM_KEYWORDS[v]}`,
+          run: () => onCamView(v),
+        }),
+      ),
       { kind: "action", id: "export", group: tp.actions, label: t.app.exportStl, keywords: "export download stl 3mf print exportar descargar imprimir", run: onExport },
     ];
-  }, [t, tp, params, onChange, view, onView, onExport]);
+  }, [t, tp, params, onChange, view, onView, onExport, onCamView]);
 
   // the speech callbacks outlive renders: they read the latest commands / state from here
   const latest = useRef({ commands, params, view });
