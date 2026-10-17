@@ -167,6 +167,7 @@ export default function Viewer({
   cutTool = null,
   selectedCut = null,
   onSelectCut = () => {},
+  readOnly = false,
 }: {
   params: ShapeParams;
   view: ViewSettings;
@@ -178,6 +179,8 @@ export default function Viewer({
   cutTool?: MarkTool | null;
   selectedCut?: MarkSel | null;
   onSelectCut?: (s: MarkSel | null) => void;
+  /** Look only: no handles, no hole or text markers. */
+  readOnly?: boolean;
 }) {
   const cutHandle = useRef<CutToolsHandle | null>(null);
   // looking from under the floor: hide the floor so the base shows
@@ -212,7 +215,7 @@ export default function Viewer({
       <FitCamera dist={dist} h={h} />
       <CameraRig request={camRequest} dist={dist} h={h} onBelow={setBelow} />
       <Model params={params} view={view} onGeometry={onGeometry} onPointerDown={cutTool ? (e) => cutHandle.current?.onModelDown(e) : undefined} />
-      <CutTools params={params} onChange={onChange} tool={cutTool} selected={selectedCut} onSelect={onSelectCut} handleRef={cutHandle} />
+      {!readOnly && <CutTools params={params} onChange={onChange} tool={cutTool} selected={selectedCut} onSelect={onSelectCut} handleRef={cutHandle} />}
       {lit && <pointLight position={[0, h * 0.5, 0]} color="#ffd39b" intensity={h * h * 0.9} decay={2} distance={h * 6} />}
 
       {!below && (
@@ -223,7 +226,7 @@ export default function Viewer({
       )}
 
       {view.showMug && <Mug x={-(r * 1.35 + 65)} />}
-      {view.showHandles && <Handles params={params} onChange={onChange} />}
+      {view.showHandles && !readOnly && <Handles params={params} onChange={onChange} />}
 
       <OrbitControls target={[0, h / 2, 0]} makeDefault enableDamping maxPolarAngle={Math.PI} />
     </Canvas>

@@ -24,6 +24,8 @@ The mesh is built directly as a three.js `BufferGeometry` — no OpenSCAD, no CS
 - PLA / wood / translucent materials (the translucent one lights up like a lamp), colour palette, a 90 mm mug for scale.
 - Binary STL export at high resolution, watertight, Z-up.
 - Open Graph images (`/api/og?…`) rendered with a dependency-free software rasterizer, cached at the CDN per design.
+- A look-only page (`/view?…`, `/es/view?…`): the piece alone to turn round on a phone, one button to the editor.
+- For programs and LLMs: `/api/design?…` returns the design as built (size, wall, values the limits changed, holes and texts that can't be made and why, its links) as JSON, and [`skills/lathe/SKILL.md`](skills/lathe/SKILL.md) explains every parameter (also served as [`/llms.txt`](https://lathe3d.com/llms.txt)). To use it from Claude Code, copy `skills/lathe` into `~/.claude/skills/`.
 
 ## Development
 
@@ -41,6 +43,7 @@ pnpm test:watch
 | `src/lib/shape.ts` | Parameters, presets and the mesh generator |
 | `src/lib/patterns.ts` | Rib patterns, gallery, random designs |
 | `src/lib/url.ts` | Design ⇄ query-string encoding |
+| `skills/lathe/SKILL.md` | The parameters for an LLM; `src/lib/skill.test.ts` keeps its keys, defaults and examples in step with the code |
 | `src/lib/export.ts` | STL export |
 | `src/lib/raster.ts`, `src/lib/png.ts` | Software renderer + PNG encoder used by `/api/og` |
 | `src/lib/thumbnail.ts` | Shared offscreen WebGL renderer for gallery/history thumbnails |

@@ -11,10 +11,14 @@ const nextConfig: NextConfig = {
       },
       // the default language (English) lives at the root
       { source: "/en", destination: "/", permanent: true },
+      { source: "/en/view", destination: "/view", permanent: true },
     ];
   },
   async rewrites() {
-    return [{ source: "/", destination: "/en" }];
+    return [
+      { source: "/", destination: "/en" },
+      { source: "/view", destination: "/en/view" },
+    ];
   },
 };
 

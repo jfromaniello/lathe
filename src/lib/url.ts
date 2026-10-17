@@ -2,8 +2,8 @@ import { DEFAULT_PARAMS, type Cut, type CutMode, type ShapeParams, type TextMark
 import { TEXT_FONTS, type TextFont } from "./text";
 import { DEFAULT_VIEW, MATERIALS, type MaterialKind, type ViewSettings } from "./view";
 
-// short URL keys for each param
-const KEYS: Record<keyof ShapeParams, string> = {
+// short URL keys for each param (documented one by one in skills/lathe/SKILL.md)
+export const KEYS: Record<keyof ShapeParams, string> = {
   mode: "m",
   height: "h",
   radius: "r",
@@ -207,8 +207,10 @@ export function encodeAll(p: ShapeParams, v: ShareableView): string {
   return [encodeParams(p), encodeView(v)].filter(Boolean).join("&");
 }
 
-export function shareUrl(p: ShapeParams, v: ShareableView): string {
+/** Link to the design in the editor, or (`page` "/view") on the look-only preview page. */
+export function shareUrl(p: ShapeParams, v: ShareableView, page: "" | "/view" = ""): string {
   const qs = encodeAll(p, v);
-  const base = `${window.location.origin}${window.location.pathname}`;
+  const path = page ? `${window.location.pathname.replace(/\/$/, "")}${page}` : window.location.pathname;
+  const base = `${window.location.origin}${path}`;
   return qs ? `${base}?${qs}` : base;
 }

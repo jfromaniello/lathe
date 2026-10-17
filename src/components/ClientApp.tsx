@@ -11,11 +11,8 @@ function Loading() {
 
 // The whole app is client-only: it depends on WebGL and reads its state from the URL.
 const App = dynamic(() => import("@/components/App"), { ssr: false, loading: Loading });
+const Preview = dynamic(() => import("@/components/Preview"), { ssr: false, loading: Loading });
 
-export default function ClientApp({ lang }: { lang: Lang }) {
-  return (
-    <I18nProvider lang={lang}>
-      <App />
-    </I18nProvider>
-  );
+export default function ClientApp({ lang, preview = false }: { lang: Lang; preview?: boolean }) {
+  return <I18nProvider lang={lang}>{preview ? <Preview /> : <App />}</I18nProvider>;
 }
