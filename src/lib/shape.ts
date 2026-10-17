@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { insidePolygon, isDegenerate, lowerBound, splitCell, splitOutline, type CellChords, type CellPt, type PPoint, type Region } from "./cuts";
+import { textOutline, type TextFont } from "./text";
 
 export type Waveform = "sine" | "triangle" | "scallop" | "square";
 export type Mode = "shell" | "solid";
@@ -10,6 +11,17 @@ export type HoleShape = "circle" | "follow";
 export type CutShape = "circle" | "square";
 /** pocket: sunk `depth` mm into the wall · through: through this wall · both: through the whole piece (this wall and the one opposite) */
 export type CutMode = "pocket" | "through" | "both";
+
+/** Text on the outer surface, raised out of it or engraved into it. */
+export interface TextMark {
+  text: string;
+  font: TextFont;
+  u: number; // 0..1 round the section, centre
+  z: number; // 0..1 of the height, centre
+  size: number; // mm, font size (capitals are a bit shorter)
+  depth: number; // mm out of (raised) or into (engraved) the surface
+  raised: boolean;
+}
 
 /** A hole punched in the wall, placed on the outer surface. */
 export interface Cut {
@@ -55,6 +67,7 @@ export interface ShapeParams {
   splitLip: number; // mm height of the neck on the body that the top slides over
   splitGap: number; // mm clearance between the neck and the top
   cuts: Cut[]; // holes / pockets in the wall (shell only)
+  texts: TextMark[]; // lettering on the outer surface
   radialSegments: number;
   heightSegments: number;
 }
@@ -95,6 +108,7 @@ export const DEFAULT_PARAMS: ShapeParams = {
   splitLip: 6,
   splitGap: 0.2,
   cuts: [],
+  texts: [],
   radialSegments: 256,
   heightSegments: 128,
 };
@@ -466,6 +480,64 @@ export function placeCuts(input: ShapeParams): { placed: PlacedCut[]; problems: 
   return { placed, problems };
 }
 
+export type TextProblem = "empty" | "edge" | "joint" | "wide" | "thin" | "overlap";
+
+/** Text as the mesh uses it: centre in (u, real height mm), letter outlines in mm around it. */
+export interface PlacedText {
+  source: number;
+  u: number;
+  z: number;
+  rings: [number, number][][];
+  width: number;
+  height: number;
+  depth: number;
+  raised: boolean;
+}
+
+/** Which texts can be put on the surface: clear of the floor, the rim, the joint, the holes and each other. */
+export function placeTexts(input: ShapeParams): { placed: PlacedText[]; problems: (TextProblem | null)[] } {
+  const p = sanitize(input);
+  const H = p.height;
+  const m = wallModel(p);
+  const holes = placeCuts(p).placed;
+  const placed: PlacedText[] = [];
+  const problems: (TextProblem | null)[] = [];
+  const margin = 1;
+  // boxes in (u, mm up): what a text must not overlap
+  const boxes = holes.map((c) => ({ u: c.u, hw: c.w / 2, z: c.z, hh: (c.shape === "circle" ? c.w : c.h) / 2 }));
+  const clash = (a: { u: number; hw: number; z: number; hh: number }, perim: number) =>
+    boxes.some((b) => {
+      let du = Math.abs(a.u - b.u) % 1;
+      du = Math.min(du, 1 - du) * perim;
+      return du < a.hw + b.hw + 0.5 && Math.abs(a.z - b.z) < a.hh + b.hh + 0.5;
+    });
+  for (let i = 0; i < p.texts.length; i++) {
+    const t = p.texts[i];
+    const out = textOutline(t.text, t.font, Math.max(1, t.size));
+    const zc = t.z * H;
+    const perim = m.perimeterAt(zc);
+    const u0 = t.u - Math.floor(t.u);
+    const box = { u: u0, hw: out.width / 2, z: zc, hh: out.height / 2 };
+    const maxDepth = t.raised ? 10 : p.mode === "shell" ? p.wall - 0.3 : 5;
+    const depth = Math.min(Math.max(0, t.depth), maxDepth);
+    // the rim under a slanted mouth: check the middle and both ends of the line
+    const rim = Math.min(...[-1, 0, 1].map((k) => m.wallZ(m.thetaOf(u0 + (k * box.hw) / perim), p.mode === "shell" ? H - p.top : H)));
+    const zs = p.split * H;
+    let problem: TextProblem | null = null;
+    if (out.rings.length === 0) problem = "empty";
+    else if (depth < 0.2) problem = "thin";
+    else if (zc - box.hh < margin || zc + box.hh > rim - margin) problem = "edge";
+    else if (p.mode === "shell" && p.split > 0 && zc - box.hh < zs + margin && zc + box.hh > zs - margin) problem = "joint";
+    else if ((out.width + 1) / perim > 0.95) problem = "wide";
+    else if (clash(box, perim)) problem = "overlap";
+    problems.push(problem);
+    if (problem) continue;
+    boxes.push(box);
+    placed.push({ source: i, u: u0, z: zc, rings: out.rings, width: out.width, height: out.height, depth, raised: t.raised });
+  }
+  return { placed, problems };
+}
+
 /** Outline of a cut in (u, z), CCW, centred on (u0, z0), with mm converted to u by the perimeter there. */
 function cutOutline(c: PlacedCut, perim: number, u0: number, z0: number): [number, number][] {
   if (c.shape === "square") {
@@ -730,7 +802,7 @@ export function wallSurface(input: ShapeParams) {
 }
 
 function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
-  const { H, R, n, thetaOf, rotAt, envelope, extras, outerScale, innerScale, plateZ, wallVertex, perimeterAt, nodeZ } = wallModel(p);
+  const { H, R, n, thetaOf, rotAt, envelope, extras, outerScale, innerScale, plateZ, wallVertex, perimeterAt, nodeZ, overVertex } = wallModel(p);
 
   // --- top plate: flat rim as wide as the wall, then a spherical cap (dome or dish) down to the hole / centre ---
   const hasHole = p.mode === "shell" && p.top > 0 && p.topHole > 0.01;
@@ -940,112 +1012,149 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
     return { start, center: false, key: `${node.kind}${off}:${z.toFixed(5)}` };
   };
 
-  // ---------- holes: per wall surface, the cells each cut touches and how the outline crosses them ----------
+  // ---------- marks on the wall (holes, pockets, lettering): per wall surface, the cells each outline touches ----------
   type Surf = "outer" | "inner";
-  const allCuts = p.mode === "shell" ? placeCuts(p).placed : [];
-  interface CutPlan {
-    c: PlacedCut;
+  interface Contour {
+    poly: { u: number; z: number }[]; // row heights
+    pts: Partial<Record<Surf, PPoint[]>>;
+  }
+  interface MarkPlan {
     u0: number;
     z0: number; // row height of the centre
-    poly: { u: number; z: number }[];
-    pts: Partial<Record<Surf, PPoint[]>>;
+    contours: Contour[];
+    through: boolean; // a hole through the wall: inner surface too, no floor
+    depth: number; // pocket / engraving depth, or how far lettering stands out
+    raised: boolean;
+    convex: boolean; // a single convex outline (holes): its side faces the axis through its centre
   }
   interface CellPlan extends CellChords {
     surf: Surf;
   }
-  let plans: CutPlan[] = [];
-  let rimTop: number | null = null; // height of an open rim the cuts may notch
+  interface MarkSource {
+    u: number;
+    z: number; // real height
+    rings: [number, number][][]; // mm around the centre (x round, y up), at real heights
+    through: boolean;
+    depth: number;
+    raised: boolean;
+    convex: boolean;
+    perim: number;
+  }
+  const marks: MarkSource[] = [
+    ...(p.mode === "shell" ? placeCuts(p).placed : []).map((c): MarkSource => {
+      const perim = perimeterAt(c.z);
+      return {
+        u: c.u,
+        z: c.z,
+        rings: [cutOutline(c, perim, 0, 0).map(([u, z]): [number, number] => [u * perim, z])],
+        through: c.depth === 0,
+        depth: c.depth,
+        raised: false,
+        convex: true,
+        perim,
+      };
+    }),
+    ...placeTexts(p).placed.map((t): MarkSource => ({ u: t.u, z: t.z, rings: t.rings, through: false, depth: t.depth, raised: t.raised, convex: false, perim: perimeterAt(t.z) })),
+  ];
+  let plans: MarkPlan[] = [];
+  let rimTop: number | null = null; // height of an open rim the holes may notch
   let stations: Record<Surf, number[]> = { outer: [], inner: [] };
   let cells = new Map<string, CellPlan>(); // `${surf}:${band}:${column}`
   const vcache = new Map<string, number>();
 
-  const planCuts = (loop: Node[]) => {
+  const planMarks = (loop: Node[]) => {
     plans = [];
     cells = new Map();
     vcache.clear();
-    if (allCuts.length === 0) return;
+    if (marks.length === 0) return;
     const st = (surf: Surf) => [...new Set(loop.filter((nd) => nd.surface === surf && nd.kind === surf).map((nd) => nd.z))].sort((x, y) => x - y);
     stations = { outer: st("outer"), inner: st("inner") };
     rimTop = loop.some((nd) => nd.surface === "rim") ? H : null;
-    /** The outline drawn at real heights, taken to row heights column by column (a circle stays a circle on the surface). */
-    const toRows = (outline: [number, number][]): [number, number][] => outline.map(([u, z]) => [u, nodeZ(u, z)]);
-    const fits = (outline: [number, number][], depth: number, surf: Surf) => {
+    /** Rings drawn at real heights, taken to row heights column by column (a circle stays a circle on the surface). */
+    const toRows = (mk: MarkSource, du: number, dz: number) =>
+      mk.rings.map((r) => r.map(([x, y]): [number, number] => {
+        const u = mk.u + du + x / mk.perim;
+        return [u, nodeZ(u, mk.z + dz + y)];
+      }));
+    const fits = (rings: [number, number][][], mk: MarkSource, surf: Surf) => {
       const ss = stations[surf];
-      const zs = outline.map((q) => q[1]);
+      const zs = rings.flat().map((q) => q[1]);
       const lo = Math.min(...zs);
       const hi = Math.max(...zs);
       const top = ss[ss.length - 1];
-      const overTop = depth === 0 && rimTop !== null && Math.abs(top - rimTop) < 1e-6 && lo < top - 0.5;
+      const overTop = mk.through && rimTop !== null && Math.abs(top - rimTop) < 1e-6 && lo < top - 0.5;
       return ss.length > 1 && lo > ss[0] + 0.5 && (hi < top - 0.5 || overTop);
     };
-    for (const c of allCuts) {
-      const perim = perimeterAt(c.z);
-      const probe = toRows(cutOutline(c, perim, c.u, c.z));
-      if (!fits(probe, c.depth, "outer") || (c.depth === 0 && !fits(probe, c.depth, "inner"))) continue;
-      const surfs: Surf[] = c.depth === 0 ? ["outer", "inner"] : ["outer"];
+    for (const mk of marks) {
+      const surfs: Surf[] = mk.through ? ["outer", "inner"] : ["outer"];
+      if (surfs.some((sf) => !fits(toRows(mk, 0, 0), mk, sf))) continue;
       // nudge the outline by a hair if it would cross the grid right at a corner (degenerate cells)
       for (let attempt = 0; attempt < 16; attempt++) {
-        const u0 = c.u + (attempt * 2.9e-4) / perim;
-        const z0 = c.z + attempt * 3.7e-4;
-        const outline = toRows(cutOutline(c, perim, u0, z0));
-        const pts: CutPlan["pts"] = {};
-        for (const sf of surfs) pts[sf] = splitOutline(outline, R, stations[sf]);
-        if (attempt < 15 && surfs.some((sf) => isDegenerate(pts[sf]!, R, stations[sf], perim))) continue;
-        plans.push({ c, u0, z0: nodeZ(u0, z0), poly: outline.map(([u, z]) => ({ u, z })), pts });
+        const du = (attempt * 2.9e-4) / mk.perim;
+        const dz = attempt * 3.7e-4;
+        const rings = toRows(mk, du, dz);
+        const contours: Contour[] = rings.map((r) => ({ poly: r.map(([u, z]) => ({ u, z })), pts: Object.fromEntries(surfs.map((sf) => [sf, splitOutline(r, R, stations[sf])])) }));
+        if (attempt < 15 && contours.some((ct) => surfs.some((sf) => isDegenerate(ct.pts[sf]!, R, stations[sf], mk.perim)))) continue;
+        plans.push({ u0: mk.u + du, z0: nodeZ(mk.u + du, mk.z + dz), contours, through: mk.through, depth: mk.depth, raised: mk.raised, convex: mk.convex });
         break;
       }
     }
     plans.forEach((plan, ci) => {
-      for (const surf of Object.keys(plan.pts) as Surf[]) {
-        const P = plan.pts[surf]!;
-        const ss = stations[surf];
-        const cell = (k: number, j: number) => {
-          const i = ((k % R) + R) % R;
-          const key = `${surf}:${j}:${i}`;
-          let cp = cells.get(key);
-          if (!cp) cells.set(key, (cp = { surf, chords: [], loops: [] }));
-          return { cp, shift: (i - k) / R };
-        };
-        // every cell under the cut's box, so the ones wholly inside are visited too
-        const us = plan.poly.map((q) => q.u);
-        const zz = plan.poly.map((q) => q.z);
-        const j0 = lowerBound(ss, Math.min(...zz)) - 1;
-        const j1 = lowerBound(ss, Math.max(...zz));
-        for (let k = Math.floor(Math.min(...us) * R); k <= Math.floor(Math.max(...us) * R); k++) for (let j = j0; j < Math.min(j1, ss.length - 1); j++) cell(k, j);
-        const cpt = (q: PPoint, idx: number, shift: number): CellPt => ({ u: q.u + shift, z: q.z, cut: ci, idx });
-        const bandOf = (a: PPoint, b: PPoint) => lowerBound(ss, (a.z + b.z) / 2) - 1;
-        const cellOf = (a: PPoint, b: PPoint) => cell(Math.floor(((a.u + b.u) / 2) * R), bandOf(a, b));
-        const first = P.findIndex((q) => q.vline !== undefined || q.hline !== undefined);
-        if (first < 0) {
-          const { cp, shift } = cellOf(P[0], P[1]);
-          cp.loops.push(P.map((q, idx) => cpt(q, idx, shift)));
-          continue;
-        }
-        let run = [first];
-        for (let m = 0; m < P.length; m++) {
-          const ia = (first + m) % P.length;
-          const ib = (ia + 1) % P.length;
-          run.push(ib);
-          const b = P[ib];
-          if (b.vline !== undefined || b.hline !== undefined) {
-            // the stretch over an open rim (a notch) is not on the wall
-            if (bandOf(P[run[0]], P[run[1]]) < ss.length - 1) {
-              const { cp, shift } = cellOf(P[run[0]], P[run[1]]);
-              cp.chords.push(run.map((idx) => cpt(P[idx], idx, shift)));
+      plan.contours.forEach((ct, ri) => {
+        for (const surf of Object.keys(ct.pts) as Surf[]) {
+          const P = ct.pts[surf]!;
+          const ss = stations[surf];
+          const cell = (k: number, j: number) => {
+            const i = ((k % R) + R) % R;
+            const key = `${surf}:${j}:${i}`;
+            let cp = cells.get(key);
+            if (!cp) cells.set(key, (cp = { surf, chords: [], loops: [] }));
+            return { cp, shift: (i - k) / R };
+          };
+          // every cell under the outline's box, so the ones wholly inside are visited too
+          const us = ct.poly.map((q) => q.u);
+          const zz = ct.poly.map((q) => q.z);
+          const j0 = lowerBound(ss, Math.min(...zz)) - 1;
+          const j1 = lowerBound(ss, Math.max(...zz));
+          for (let k = Math.floor(Math.min(...us) * R); k <= Math.floor(Math.max(...us) * R); k++) for (let j = j0; j < Math.min(j1, ss.length - 1); j++) cell(k, j);
+          const cpt = (q: PPoint, idx: number, shift: number): CellPt => ({ u: q.u + shift, z: q.z, cut: ci, ring: ri, idx });
+          const bandOf = (a: PPoint, b: PPoint) => lowerBound(ss, (a.z + b.z) / 2) - 1;
+          const cellOf = (a: PPoint, b: PPoint) => cell(Math.floor(((a.u + b.u) / 2) * R), bandOf(a, b));
+          const first = P.findIndex((q) => q.vline !== undefined || q.hline !== undefined);
+          if (first < 0) {
+            const { cp, shift } = cellOf(P[0], P[1]);
+            cp.loops.push(P.map((q, idx) => cpt(q, idx, shift)));
+            continue;
+          }
+          let run = [first];
+          for (let m = 0; m < P.length; m++) {
+            const ia = (first + m) % P.length;
+            const ib = (ia + 1) % P.length;
+            run.push(ib);
+            const b = P[ib];
+            if (b.vline !== undefined || b.hline !== undefined) {
+              // the stretch over an open rim (a notch) is not on the wall
+              if (bandOf(P[run[0]], P[run[1]]) < ss.length - 1) {
+                const { cp, shift } = cellOf(P[run[0]], P[run[1]]);
+                cp.chords.push(run.map((idx) => cpt(P[idx], idx, shift)));
+              }
+              run = [ib];
             }
-            run = [ib];
           }
         }
-      }
+      });
     });
   };
 
-  const insideCut = (surf: Surf, u: number, z: number): number => {
-    for (let ci = 0; ci < plans.length; ci++) {
-      const pl = plans[ci];
-      if (!pl.pts[surf]) continue;
-      if (insidePolygon(pl.poly, u + Math.round(pl.u0 - u), z)) return ci;
-    }
+  /** Even-odd over a mark's outlines (letters have holes), in the unwrapped frame next to its centre. */
+  const insideMark = (pl: MarkPlan, u: number, z: number) => {
+    const uu = u + Math.round(pl.u0 - u);
+    let inside = false;
+    for (const ct of pl.contours) if (insidePolygon(ct.poly, uu, z)) inside = !inside;
+    return inside;
+  };
+  const markAt = (surf: Surf, u: number, z: number): number => {
+    for (let ci = 0; ci < plans.length; ci++) if (plans[ci].contours[0]?.pts[surf] && insideMark(plans[ci], u, z)) return ci;
     return -1;
   };
 
@@ -1058,6 +1167,10 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
     }
     return v;
   };
+
+  /** The face of a mark (a pocket's floor, lettering's top): sunk `depth` into the surface, or standing `depth` clear of the rib crests. */
+  const markFace = (pl: MarkPlan, surf: Surf, u: number, zNode: number, theta?: number) =>
+    pl.raised ? overVertex(u, zNode, pl.depth) : wallVertex(surf, u, zNode, pl.depth, theta);
 
   /** Triangulates a region of a cell and emits it, facing the same way as the regular wall there (sign of the area in u, z). */
   const emitRegion = (r: Region, sign: number, resolve: (q: CellPt) => number) => {
@@ -1073,7 +1186,7 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
     }
   };
 
-  /** Wall rows a → b with holes in the band between them: the cells they touch are split, the rest stitched as usual. */
+  /** Wall rows a → b with marks in the band between them: the cells they touch are split, the rest stitched as usual. */
   const stitchCut = (a: Row, b: Row, surf: Surf, za: number, zb: number) => {
     const lo = za < zb ? a : b;
     const hi = za < zb ? b : a;
@@ -1089,32 +1202,32 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
         indices.push(a.start + i, b.start + j, b.start + i);
         continue;
       }
-      const { keep, cut } = splitCell({ u0: i / R, u1: (i + 1) / R, zlo, zhi }, cp, (u, z) => insideCut(surf, u, z) >= 0);
-      const resolve = (off: number) => (q: CellPt) => {
+      const { keep, cut } = splitCell({ u0: i / R, u1: (i + 1) / R, zlo, zhi }, cp, (u, z) => markAt(surf, u, z) >= 0);
+      const resolve = (ci: number) => (q: CellPt) => {
+        const pl = ci >= 0 ? plans[ci] : null;
         if (q.corner !== undefined) {
           const row = q.corner < 2 ? lo : hi;
           const col = q.corner === 0 || q.corner === 3 ? i : j;
-          if (off === 0) return row.start + col;
-          return vid(`c:${row.start}:${col}:${off}`, () => wallVertex(surf, col / R, q.corner! < 2 ? zlo : zhi, off, thetas[col]));
+          if (!pl) return row.start + col;
+          return vid(`c:${ci}:${row.start}:${col}`, () => markFace(pl, surf, col / R, q.corner! < 2 ? zlo : zhi, thetas[col]));
         }
-        const pl = plans[q.cut!];
-        const pt = pl.pts[surf]![q.idx!];
-        return vid(`p:${surf}:${q.cut}:${q.idx}:${off}`, () => wallVertex(surf, pt.u, pt.z, off));
+        const pt = plans[q.cut!].contours[q.ring!].pts[surf]![q.idx!];
+        if (!pl) return vid(`p:${surf}:${q.cut}:${q.ring}:${q.idx}`, () => wallVertex(surf, pt.u, pt.z));
+        return vid(`f:${surf}:${q.cut}:${q.ring}:${q.idx}`, () => markFace(pl, surf, pt.u, pt.z));
       };
-      for (const r of keep) emitRegion(r, sign, resolve(0));
+      for (const r of keep) emitRegion(r, sign, resolve(-1));
       for (const r of cut) {
         const q = r.contour.find((x) => x.cut !== undefined);
-        const ci = q ? q.cut! : insideCut(surf, (r.contour[0].u + r.contour[2].u) / 2, (zlo + zhi) / 2);
-        const depth = ci >= 0 ? plans[ci].c.depth : 0;
-        if (depth > 0) emitRegion(r, sign, resolve(depth)); // the floor of a pocket
+        const ci = q ? q.cut! : markAt(surf, (r.contour[0].u + r.contour[2].u) / 2, (zlo + zhi) / 2);
+        if (ci >= 0 && !plans[ci].through) emitRegion(r, sign, resolve(ci)); // a pocket's floor, a letter's face
       }
     }
   };
 
-  /** Where a cut notches the open rim: the two points on the rim (index in the outline points), in u order. */
-  const notchOf = (pl: CutPlan, surf: Surf): [number, number] | null => {
-    const P = pl.pts[surf];
-    if (rimTop === null || !P) return null;
+  /** Where a hole notches the open rim: the two points on the rim (index in the outline points), in u order. */
+  const notchOf = (pl: MarkPlan, surf: Surf): [number, number] | null => {
+    const P = pl.contours[0].pts[surf];
+    if (rimTop === null || !P || pl.contours.length !== 1) return null;
     const at = P.flatMap((q, idx) => (q.hline !== undefined && Math.abs(q.z - rimTop!) < 1e-9 ? [idx] : []));
     if (at.length !== 2) return null;
     return P[at[0]].u <= P[at[1]].u ? [at[0], at[1]] : [at[1], at[0]];
@@ -1126,16 +1239,16 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
       const no = notchOf(pl, "outer");
       const ni = notchOf(pl, "inner");
       if (!no || !ni) return [];
-      const Po = pl.pts.outer!;
-      const Pi = pl.pts.inner!;
+      const Po = pl.contours[0].pts.outer!;
+      const Pi = pl.contours[0].pts.inner!;
       return [
         {
           u0: Po[no[0]].u,
           u1: Po[no[1]].u,
-          o0: vid(`p:outer:${ci}:${no[0]}:0`, () => wallVertex("outer", Po[no[0]].u, zTop)),
-          o1: vid(`p:outer:${ci}:${no[1]}:0`, () => wallVertex("outer", Po[no[1]].u, zTop)),
-          i0: vid(`p:inner:${ci}:${ni[0]}:0`, () => wallVertex("inner", Pi[ni[0]].u, zTop)),
-          i1: vid(`p:inner:${ci}:${ni[1]}:0`, () => wallVertex("inner", Pi[ni[1]].u, zTop)),
+          o0: vid(`p:outer:${ci}:0:${no[0]}`, () => wallVertex("outer", Po[no[0]].u, zTop)),
+          o1: vid(`p:outer:${ci}:0:${no[1]}`, () => wallVertex("outer", Po[no[1]].u, zTop)),
+          i0: vid(`p:inner:${ci}:0:${ni[0]}`, () => wallVertex("inner", Pi[ni[0]].u, zTop)),
+          i1: vid(`p:inner:${ci}:0:${ni[1]}`, () => wallVertex("inner", Pi[ni[1]].u, zTop)),
         },
       ];
     });
@@ -1162,66 +1275,101 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
     }
   };
 
-  /** The side of each hole: outer ring to inner ring (through), or outer ring to the pocket floor. A notch is open at the rim. */
+  /**
+   * The sides of each mark, outline by outline: outer ring to inner ring (a hole through), or the surface to the mark's
+   * face (pocket, engraving, raised letters). A notch is open at the rim.
+   */
   const cutWalls = () => {
     plans.forEach((pl, ci) => {
-      const { c } = pl;
-      const through = c.depth === 0;
-      /** The outline points on the wall, in order: all of them, or from one rim point round the bottom to the other. */
-      const onWall = (surf: Surf) => {
-        const P = pl.pts[surf]!;
-        const all = P.map((q, idx) => ({ q, idx, t: q.t }));
-        const nt = notchOf(pl, surf);
-        if (!nt) return { open: false, list: all };
-        // walk from the rim point where the outline dives into the wall (the next point is below the rim)
-        const start = P[(nt[0] + 1) % P.length].z < rimTop! ? nt[0] : nt[1];
-        const list = [];
-        for (let m = 0; m < P.length; m++) {
-          const idx = (start + m) % P.length;
-          list.push({ q: P[idx], idx, t: P[idx].t + (idx < start ? 1 : 0) });
-          if (m > 0 && P[idx].hline !== undefined && Math.abs(P[idx].z - rimTop!) < 1e-9) break;
+      const through = pl.through;
+      pl.contours.forEach((ct, ri) => {
+        /** The outline points on the wall, in order: all of them, or from one rim point round the bottom to the other. */
+        const onWall = (surf: Surf) => {
+          const P = ct.pts[surf]!;
+          const all = P.map((q, idx) => ({ q, idx, t: q.t }));
+          const nt = notchOf(pl, surf);
+          if (!nt) return { open: false, list: all };
+          // walk from the rim point where the outline dives into the wall (the next point is below the rim)
+          const start = P[(nt[0] + 1) % P.length].z < rimTop! ? nt[0] : nt[1];
+          const list = [];
+          for (let m = 0; m < P.length; m++) {
+            const idx = (start + m) % P.length;
+            list.push({ q: P[idx], idx, t: P[idx].t + (idx < start ? 1 : 0) });
+            if (m > 0 && P[idx].hline !== undefined && Math.abs(P[idx].z - rimTop!) < 1e-9) break;
+          }
+          return { open: true, list };
+        };
+        const wa = onWall("outer");
+        const ringA = wa.list.map(({ q, idx, t }) => ({ t, q, v: vid(`p:outer:${ci}:${ri}:${idx}`, () => wallVertex("outer", q.u, q.z)) }));
+        const wb = through ? onWall("inner") : wa;
+        const ringB = wb.list.map(({ q, idx, t }) => ({
+          t,
+          q,
+          v: through ? vid(`p:inner:${ci}:${ri}:${idx}`, () => wallVertex("inner", q.u, q.z)) : vid(`f:outer:${ci}:${ri}:${idx}`, () => markFace(pl, "outer", q.u, q.z)),
+        }));
+        const open = wa.open;
+        const P3 = (v: number) => new THREE.Vector3(positions[v * 3], positions[v * 3 + 1], positions[v * 3 + 2]);
+        // which way each side faces: into the hole / pocket / engraving, out of raised letters
+        const o = new THREE.Vector3(...wallVertex("outer", pl.u0, pl.z0));
+        const e = new THREE.Vector3(...(through ? wallVertex("inner", pl.u0, pl.z0) : markFace(pl, "outer", pl.u0, pl.z0)));
+        const axis = e.clone().sub(o).normalize();
+        // for letters: is the mark on the left of this outline as it runs? (its turning sense, and whether it is an
+        // outer outline or a counter: how many other outlines hold it)
+        const scale = TWO_PI * p.radius;
+        let area = 0;
+        for (let k = 0; k < ct.poly.length; k++) {
+          const q0 = ct.poly[k];
+          const q1 = ct.poly[(k + 1) % ct.poly.length];
+          area += q0.u * scale * q1.z - q1.u * scale * q0.z;
         }
-        return { open: true, list };
-      };
-      const wa = onWall("outer");
-      const ringA = wa.list.map(({ q, idx, t }) => ({ t, v: vid(`p:outer:${ci}:${idx}:0`, () => wallVertex("outer", q.u, q.z)) }));
-      const wb = through ? onWall("inner") : wa;
-      const ringB = wb.list.map(({ q, idx, t }) => ({
-        t,
-        v: through ? vid(`p:inner:${ci}:${idx}:0`, () => wallVertex("inner", q.u, q.z)) : vid(`p:outer:${ci}:${idx}:${c.depth}`, () => wallVertex("outer", q.u, q.z, c.depth)),
-      }));
-      const open = wa.open;
-      const o = new THREE.Vector3(...wallVertex("outer", pl.u0, pl.z0));
-      const e = new THREE.Vector3(...(through ? wallVertex("inner", pl.u0, pl.z0) : wallVertex("outer", pl.u0, pl.z0, c.depth)));
-      const axis = e.clone().sub(o).normalize();
-      const P = (v: number) => new THREE.Vector3(positions[v * 3], positions[v * 3 + 1], positions[v * 3 + 2]);
-      const tri = (x: number, y: number, z: number) => {
-        const a = P(x);
-        const n = P(y).sub(a).cross(P(z).sub(a));
-        const cen = a.add(P(y)).add(P(z)).multiplyScalar(1 / 3);
-        const toAxis = o.clone().add(axis.clone().multiplyScalar(cen.clone().sub(o).dot(axis))).sub(cen);
-        if (n.dot(toAxis) >= 0) indices.push(x, y, z);
-        else indices.push(x, z, y);
-      };
-      // zip the two rings together by position along the outline (a notch: two open strips, end to end)
-      let ia = 0;
-      let ib = 0;
-      const na = open ? ringA.length - 1 : ringA.length;
-      const nb = open ? ringB.length - 1 : ringB.length;
-      const tA = (k: number) => (open ? ringA[k].t : ringA[k % na].t + Math.floor(k / na));
-      const tB = (k: number) => (open ? ringB[k].t : ringB[k % nb].t + Math.floor(k / nb));
-      while (ia < na || ib < nb) {
-        const advanceA = ib >= nb || (ia < na && tA(ia + 1) <= tB(ib + 1));
-        const A = (k: number) => ringA[open ? k : k % na].v;
-        const B = (k: number) => ringB[open ? k : k % nb].v;
-        if (advanceA) {
-          tri(A(ia), A(ia + 1), B(ib));
-          ia++;
-        } else {
-          tri(A(ia), B(ib + 1), B(ib));
-          ib++;
+        const nested = pl.contours.filter((other) => other !== ct && insidePolygon(other.poly, ct.poly[0].u, ct.poly[0].z)).length;
+        const markOnLeft = area > 0 === (nested % 2 === 0);
+        const facing = (a: THREE.Vector3, n: THREE.Vector3, edge: [PPoint, PPoint]) => {
+          if (pl.convex) {
+            const toAxis = o.clone().add(axis.clone().multiplyScalar(a.clone().sub(o).dot(axis))).sub(a);
+            return n.dot(toAxis) >= 0;
+          }
+          // the face turns towards the mark (pocket, engraving) or away from it (raised letters)
+          const [p0, p1] = edge;
+          const mu = (p0.u + p1.u) / 2;
+          const mz = (p0.z + p1.z) / 2;
+          const du = (p1.u - p0.u) * scale;
+          const dz = p1.z - p0.z;
+          const len = Math.hypot(du, dz) || 1;
+          const left = { u: (-dz / len / scale) * 0.05, z: (du / len) * 0.05 };
+          const towardsMark = !pl.raised;
+          const sgn = markOnLeft === towardsMark ? 1 : -1;
+          const q = new THREE.Vector3(...wallVertex("outer", mu + sgn * left.u, mz + sgn * left.z));
+          const m3 = new THREE.Vector3(...wallVertex("outer", mu, mz));
+          return n.dot(q.sub(m3)) >= 0;
+        };
+        const tri = (x: { v: number; q: PPoint }, y: { v: number; q: PPoint }, z: { v: number; q: PPoint }, edge: [PPoint, PPoint]) => {
+          const a = P3(x.v);
+          const n = P3(y.v).sub(a).cross(P3(z.v).sub(a));
+          const cen = a.clone().add(P3(y.v)).add(P3(z.v)).multiplyScalar(1 / 3);
+          if (facing(cen, n, edge)) indices.push(x.v, y.v, z.v);
+          else indices.push(x.v, z.v, y.v);
+        };
+        // zip the two rings together by position along the outline (a notch: two open strips, end to end)
+        let ia = 0;
+        let ib = 0;
+        const na = open ? ringA.length - 1 : ringA.length;
+        const nb = open ? ringB.length - 1 : ringB.length;
+        const tA = (k: number) => (open ? ringA[k].t : ringA[k % na].t + Math.floor(k / na));
+        const tB = (k: number) => (open ? ringB[k].t : ringB[k % nb].t + Math.floor(k / nb));
+        const A = (k: number) => ringA[open ? k : k % na];
+        const B = (k: number) => ringB[open ? k : k % nb];
+        while (ia < na || ib < nb) {
+          const advanceA = ib >= nb || (ia < na && tA(ia + 1) <= tB(ib + 1));
+          if (advanceA) {
+            tri(A(ia), A(ia + 1), B(ib), [A(ia).q, A(ia + 1).q]);
+            ia++;
+          } else {
+            tri(A(ia), B(ib + 1), B(ib), [B(ib).q, B(ib + 1).q]);
+            ib++;
+          }
         }
-      }
+      });
     });
   };
 
@@ -1258,7 +1406,7 @@ function build(p: ShapeParams, part: Part): THREE.BufferGeometry {
   };
 
   for (const loop of loops) {
-    planCuts(loop);
+    planMarks(loop);
     const rows: Row[] = [];
     let prev: Node | null = null;
     let prevRow: Row | null = null;

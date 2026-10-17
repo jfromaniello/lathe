@@ -1,6 +1,6 @@
 import type * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { buildGeometry, buildParts, DEFAULT_PARAMS, effectiveRadialSegments, placeCuts, PRESETS, profileAt, sanitize, twistAt, wallRange, type Cut, type ShapeParams } from "./shape";
+import { buildGeometry, buildParts, DEFAULT_PARAMS, effectiveRadialSegments, placeCuts, placeTexts, PRESETS, profileAt, sanitize, twistAt, wallRange, type Cut, type ShapeParams, type TextMark } from "./shape";
 import { analyzeMesh, isWatertight } from "@/test/mesh";
 
 const low = (p: ShapeParams): ShapeParams => ({ ...p, radialSegments: 96, heightSegments: 40 });
@@ -112,6 +112,38 @@ describe("holes in the wall", () => {
     expect(placeCuts({ ...DEFAULT_PARAMS, top: 2, cuts: [hole({ z: 0.99 })] }).problems).toEqual(["edge"]);
     expect(placeCuts({ ...DEFAULT_PARAMS, cuts: [hole({ z: 0.99, mode: "pocket", depth: 0.5 })] }).problems).toEqual(["edge"]);
     expect(placeCuts({ ...DEFAULT_PARAMS, mode: "solid", cuts: [hole({})] }).problems).toEqual(["solid"]);
+  });
+});
+
+describe("text on the wall", () => {
+  const mark = (o: Partial<TextMark>): TextMark => ({ text: "Lathe", font: "sans", u: 0.1, z: 0.5, size: 16, depth: 0.8, raised: true, ...o });
+  const cases: [string, ShapeParams][] = [
+    ["raised sans", { ...DEFAULT_PARAMS, texts: [mark({})] }],
+    ["engraved serif", { ...DEFAULT_PARAMS, wall: 2.5, texts: [mark({ font: "serif", raised: false, depth: 1, text: "Bobo" })] }],
+    ["raised script (letters overlap their neighbours)", { ...DEFAULT_PARAMS, texts: [mark({ font: "script", text: "Hola Ñandú", size: 20 })] }],
+    ["condensed over the seam, twisted square section", { ...DEFAULT_PARAMS, squareness: 0.6, twist: 45, texts: [mark({ font: "condensed", u: 0.99, text: "ABC 123" })] }],
+    ["small letters, dots and counters inside single cells", { ...DEFAULT_PARAMS, heightSegments: 24, radialSegments: 48, texts: [mark({ text: "i:o;B%", size: 6 })] }],
+    ["solid, raised and engraved", { ...DEFAULT_PARAMS, mode: "solid", texts: [mark({}), mark({ z: 0.2, raised: false, text: "Vase" })] }],
+    ["text and holes together under a slanted mouth", { ...DEFAULT_PARAMS, slant: 20, texts: [mark({ z: 0.3 })], cuts: [{ shape: "circle", mode: "through", u: 0.5, z: 0.6, w: 20, h: 20, depth: 0 }] }],
+  ];
+  it.each(cases)("stays watertight: %s", (_name, params) => {
+    const report = analyzeMesh(buildGeometry(low(params)));
+    expect(report, JSON.stringify(report)).toSatisfy(isWatertight);
+  });
+
+  it("raised letters add material, engraved ones take it away", () => {
+    const base = low({ ...DEFAULT_PARAMS, wall: 2.5, ribCount: 0 });
+    const v0 = analyzeMesh(buildGeometry(base)).volume;
+    const up = analyzeMesh(buildGeometry({ ...base, texts: [mark({ raised: true })] })).volume;
+    const down = analyzeMesh(buildGeometry({ ...base, texts: [mark({ raised: false })] })).volume;
+    expect(up).toBeGreaterThan(v0 + 20);
+    expect(down).toBeLessThan(v0 - 20);
+    expect((up - v0) / (v0 - down)).toBeCloseTo(1, 0);
+  });
+
+  it("reports texts that can't be made", () => {
+    const { problems } = placeTexts({ ...DEFAULT_PARAMS, texts: [mark({}), mark({ u: 0.12 }), mark({ z: 0.99 }), mark({ text: "   " })] });
+    expect(problems).toEqual([null, "overlap", "edge", "empty"]);
   });
 });
 

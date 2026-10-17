@@ -14,12 +14,13 @@ export interface PPoint {
   hline?: number;
 }
 
-/** A point of a cell polygon: one of the cell's corners (0 bottom-left, 1 bottom-right, 2 top-right, 3 top-left, CCW) or point `idx` of cut `cut`. */
+/** A point of a cell polygon: one of the cell's corners (0 bottom-left, 1 bottom-right, 2 top-right, 3 top-left, CCW) or point `idx` of outline `ring` of mark `cut`. */
 export interface CellPt {
   u: number;
   z: number;
   corner?: number;
   cut?: number;
+  ring?: number;
   idx?: number;
 }
 
@@ -124,8 +125,11 @@ export function splitCell(
     { u: u0, z: zhi, corner: 3 },
   ];
   if (chords.length === 0) {
-    if (loops.length > 0) return { keep: [{ contour: corners, holes: loops }], cut: loops.map((l) => ({ contour: l, holes: [] })) };
-    return isInside((u0 + u1) / 2, (zlo + zhi) / 2) ? { keep: [], cut: [{ contour: corners, holes: [] }] } : { keep: [{ contour: corners, holes: [] }], cut: [] };
+    // the whole cell is on one side; outlines wholly inside it are nested in below
+    const eps = 1e-6;
+    const whole = isInside(u0 + (u1 - u0) * eps, zlo + (zhi - zlo) * eps);
+    const base: Region = { contour: corners, holes: [] };
+    return nestLoops(whole ? { keep: [], cut: [base] } : { keep: [base], cut: [] }, loops);
   }
 
   const du = u1 - u0;
@@ -193,11 +197,36 @@ export function splitCell(
 
   const keep: Region[] = walk(false).map((contour) => ({ contour, holes: [] }));
   const cut: Region[] = walk(true).map((contour) => ({ contour, holes: [] }));
-  // an outline wholly inside the cell next to another one crossing it: a hole in whichever kept piece holds it
-  for (const l of loops) {
-    const host = keep.find((r) => insidePolygon(r.contour, l[0].u, l[0].z)) ?? keep[0];
-    host?.holes.push(l);
-    cut.push({ contour: l, holes: [] });
+  return nestLoops({ keep, cut }, loops);
+}
+
+const areaOf = (poly: { u: number; z: number }[]) => {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    a += p.u * q.z - q.u * p.z;
   }
-  return { keep, cut };
+  return Math.abs(a) / 2;
+};
+
+/**
+ * Outlines wholly inside a cell (a dot, a letter's counter, a tiny hole), biggest first: each becomes a hole in the
+ * region that holds it and a region of its own on the other side (cut inside kept, kept inside cut).
+ */
+function nestLoops(regions: { keep: Region[]; cut: Region[] }, loops: CellPt[][]): { keep: Region[]; cut: Region[] } {
+  const sorted = loops.slice().sort((a, b) => areaOf(b) - areaOf(a));
+  for (const l of sorted) {
+    let host: { r: Region; side: "keep" | "cut"; area: number } | null = null;
+    for (const side of ["keep", "cut"] as const)
+      for (const r of regions[side]) {
+        if (!insidePolygon(r.contour, l[0].u, l[0].z) || r.holes.some((h) => insidePolygon(h, l[0].u, l[0].z))) continue;
+        const area = areaOf(r.contour);
+        if (!host || area < host.area) host = { r, side, area };
+      }
+    if (!host) continue;
+    host.r.holes.push(l);
+    regions[host.side === "keep" ? "cut" : "keep"].push({ contour: l, holes: [] });
+  }
+  return regions;
 }

@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import { placeCuts, wallSurface, type Cut, type CutMode, type CutShape, type ShapeParams } from "@/lib/shape";
 import { useT } from "@/i18n/context";
 import { Section, Slider } from "./Controls";
+import type { MarkSel, MarkTool } from "./CutTools";
+import { CutsPositionSliders } from "./TextsPanel";
 
 const MODES: CutMode[] = ["pocket", "through", "both"];
 
@@ -18,10 +20,10 @@ export default function CutsPanel({
 }: {
   params: ShapeParams;
   onChange: (p: ShapeParams) => void;
-  tool: CutShape | null;
-  onTool: (t: CutShape | null) => void;
-  selected: number | null;
-  onSelect: (i: number | null) => void;
+  tool: MarkTool | null;
+  onTool: (t: MarkTool | null) => void;
+  selected: MarkSel | null;
+  onSelect: (s: MarkSel | null) => void;
 }) {
   const t = useT().cuts;
   const { problems } = useMemo(() => placeCuts(params), [params]);
@@ -49,13 +51,13 @@ export default function CutsPanel({
       {params.cuts.length === 0 && <p className="text-xs text-neutral-500">{t.empty}</p>}
       <ul className="space-y-1.5">
         {params.cuts.map((c, i) => {
-          const open = selected === i;
+          const open = selected?.kind === "cut" && selected.i === i;
           const problem = problems[i];
           const perim = surface.perimeterAt(c.z * params.height);
           return (
             <li key={i} className={`rounded-md border ${open ? "border-amber-500/60 bg-neutral-900" : "border-neutral-800"}`}>
               <div className="flex items-center gap-2 px-2 py-1.5 text-xs">
-                <button className="flex flex-1 items-center gap-2 text-left" onClick={() => onSelect(open ? null : i)}>
+                <button className="flex flex-1 items-center gap-2 text-left" onClick={() => onSelect(open ? null : { kind: "cut", i })}>
                   <span className="text-neutral-500">{c.shape === "circle" ? "○" : "□"}</span>
                   <span className="tabular-nums text-neutral-200">{t.size(c.shape, c.w, c.h)}</span>
                   <span className="truncate text-neutral-500">{t.modeShort(c.mode, c.depth)}</span>
@@ -92,16 +94,7 @@ export default function CutsPanel({
                     onChange={(v) => set(i, c.shape === "circle" ? { w: v, h: v } : { w: v })}
                   />
                   {c.shape === "square" && <Slider label={t.height} value={c.h} min={1} max={params.height} step={0.5} unit="mm" onChange={(v) => set(i, { h: v })} />}
-                  <Slider
-                    label={t.at}
-                    value={Math.round(c.z * params.height * 2) / 2}
-                    min={0}
-                    max={params.height}
-                    step={0.5}
-                    unit="mm"
-                    onChange={(v) => set(i, { z: Math.min(1, Math.max(0, v / params.height)) })}
-                  />
-                  <Slider label={t.around} value={Math.round(c.u * 360)} min={0} max={360} step={1} unit="°" onChange={(v) => set(i, { u: (((v / 360) % 1) + 1) % 1 })} />
+                  <CutsPositionSliders z={c.z} u={c.u} height={params.height} onZ={(z) => set(i, { z })} onU={(u) => set(i, { u })} />
                 </div>
               )}
             </li>

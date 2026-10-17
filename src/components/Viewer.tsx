@@ -4,9 +4,9 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber"
 import { OrbitControls, ContactShadows, Environment, Lightformer, Html } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { buildGeometry, buildParts, type CutShape, type ShapeParams } from "@/lib/shape";
+import { buildGeometry, buildParts, type ShapeParams } from "@/lib/shape";
 import Handles from "./Handles";
-import CutTools, { type CutToolsHandle } from "./CutTools";
+import CutTools, { type CutToolsHandle, type MarkSel, type MarkTool } from "./CutTools";
 
 import { renderColor, type CamView, type ViewSettings } from "@/lib/view";
 import { useT } from "@/i18n/context";
@@ -175,9 +175,9 @@ export default function Viewer({
   /** Preset view to swing to; bump `n` to ask for the same view again. */
   camRequest?: { view: CamView; n: number } | null;
   /** Hole punch picked: pressing the model starts drawing a hole. */
-  cutTool?: CutShape | null;
-  selectedCut?: number | null;
-  onSelectCut?: (i: number | null) => void;
+  cutTool?: MarkTool | null;
+  selectedCut?: MarkSel | null;
+  onSelectCut?: (s: MarkSel | null) => void;
 }) {
   const cutHandle = useRef<CutToolsHandle | null>(null);
   // looking from under the floor: hide the floor so the base shows

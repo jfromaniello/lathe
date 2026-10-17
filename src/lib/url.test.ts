@@ -24,6 +24,14 @@ describe("url encoding", () => {
     expect(decodeParams("cut=c,t,0.5,0.5,10,10,0~x,t,1,1,1,1,1~s,q,1,1,1,1,1").cuts).toHaveLength(1);
   });
 
+  it("round-trips texts with any characters", () => {
+    const texts = [
+      { text: "Hola, ¿qué tal? ~ñ~", font: "script" as const, raised: true, u: 0.25, z: 0.5, size: 14, depth: 0.8 },
+      { text: "50% OFF", font: "condensed" as const, raised: false, u: 0.75, z: 0.3, size: 20, depth: 0.6 },
+    ];
+    expect(decodeParams(encodeParams({ ...DEFAULT_PARAMS, texts })).texts).toEqual(texts);
+  });
+
   it("does not leak preview resolution into the link", () => {
     const qs = encodeParams({ ...DEFAULT_PARAMS, radialSegments: 720, heightSegments: 400 });
     expect(qs).toBe("");

@@ -12,6 +12,8 @@ import Viewer from "@/components/Viewer";
 import { CAM_VIEWS, COLORS, DEFAULT_VIEW, type CamView, type MaterialKind, type ViewSettings } from "@/lib/view";
 import { DEFAULT_PARAMS, hasSplit, sanitize, type CutShape, type ShapeParams } from "@/lib/shape";
 import CutsPanel from "@/components/CutsPanel";
+import TextsPanel from "@/components/TextsPanel";
+import type { MarkSel, MarkTool } from "@/components/CutTools";
 import { downloadBlob, make3MFParts, makeSTL, makeSTLParts } from "@/lib/export";
 import { decodeParams, decodeView, encodeAll } from "@/lib/url";
 import { useHistory } from "@/hooks/useHistory";
@@ -26,8 +28,8 @@ export default function App() {
   const [stats, setStats] = useState<{ tris: number; x: number; y: number; z: number } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [cutTool, setCutTool] = useState<CutShape | null>(null);
-  const [selectedCut, setSelectedCut] = useState<number | null>(null);
+  const [cutTool, setCutTool] = useState<MarkTool | null>(null);
+  const [selectedCut, setSelectedCut] = useState<MarkSel | null>(null);
   const [camRequest, setCamRequest] = useState<{ view: CamView; n: number } | null>(null);
   const lookFrom = useCallback((v: CamView) => setCamRequest((r) => ({ view: v, n: (r?.n ?? 0) + 1 })), []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
@@ -51,9 +53,11 @@ export default function App() {
         setCutTool(null);
         setSelectedCut(null);
       }
-      if ((e.key === "Delete" || e.key === "Backspace") && !typing && selectedCut !== null && selectedCut < params.cuts.length) {
+      if ((e.key === "Delete" || e.key === "Backspace") && !typing && selectedCut !== null) {
         e.preventDefault();
-        setParams({ ...params, cuts: params.cuts.filter((_, i) => i !== selectedCut) });
+        const { kind, i } = selectedCut;
+        if (kind === "cut") setParams({ ...params, cuts: params.cuts.filter((_, j) => j !== i) });
+        else setParams({ ...params, texts: params.texts.filter((_, j) => j !== i) });
         setSelectedCut(null);
         return;
       }
@@ -152,6 +156,7 @@ export default function App() {
           <Gallery onPick={setParams} />
           <PatternPicker params={params} onChange={setParams} />
           <Controls params={params} onChange={setParams} />
+          <TextsPanel params={params} onChange={setParams} tool={cutTool} onTool={setCutTool} selected={selectedCut} onSelect={setSelectedCut} />
           <CutsPanel params={params} onChange={setParams} tool={cutTool} onTool={setCutTool} selected={selectedCut} onSelect={setSelectedCut} />
         </div>
         <div className="border-t border-neutral-800 p-4">
@@ -240,8 +245,16 @@ export default function App() {
                 {t.cuts[s]}
               </button>
             ))}
+            <div className="mx-0.5 h-5 w-px bg-black/10" />
+            <button
+              onClick={() => setCutTool(cutTool === "text" ? null : "text")}
+              className={`rounded-lg px-2 py-0.5 text-[11px] font-medium transition md:px-2.5 md:py-1 md:text-xs ${cutTool === "text" ? "bg-amber-500 text-black" : "text-neutral-700 hover:bg-black/5"}`}
+              title={t.texts.hint}
+            >
+              {t.texts.tool}
+            </button>
           </div>
-          {cutTool && <div className="rounded-lg bg-neutral-900/80 px-2 py-1 text-[11px] text-white">{t.cuts.toolOn}</div>}
+          {cutTool && <div className="rounded-lg bg-neutral-900/80 px-2 py-1 text-[11px] text-white">{cutTool === "text" ? t.texts.toolOn : t.cuts.toolOn}</div>}
           <div className="pointer-events-auto flex items-center gap-0.5 rounded-xl border border-black/10 bg-white/70 p-1 shadow-lg backdrop-blur md:p-1.5" title={t.viewer.viewsHint}>
             {CAM_VIEWS.map((v) => (
               <button

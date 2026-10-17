@@ -1,4 +1,5 @@
-import { DEFAULT_PARAMS, type Cut, type CutMode, type ShapeParams, type Waveform, type Mode, type RibAlign, type HoleShape } from "./shape";
+import { DEFAULT_PARAMS, type Cut, type CutMode, type ShapeParams, type TextMark, type Waveform, type Mode, type RibAlign, type HoleShape } from "./shape";
+import { TEXT_FONTS, type TextFont } from "./text";
 import { DEFAULT_VIEW, MATERIALS, type MaterialKind, type ViewSettings } from "./view";
 
 // short URL keys for each param
@@ -35,6 +36,7 @@ const KEYS: Record<keyof ShapeParams, string> = {
   splitLip: "sl",
   splitGap: "sg",
   cuts: "cut",
+  texts: "tx",
   radialSegments: "seg",
   heightSegments: "hseg",
 };
@@ -50,6 +52,27 @@ const fmt = (n: number) => String(Math.round(n * 1000) / 1000);
 const CUT_MODES: Record<string, CutMode> = { p: "pocket", t: "through", b: "both" };
 const encodeCuts = (cuts: Cut[]) =>
   cuts.map((c) => [c.shape === "circle" ? "c" : "s", c.mode[0], fmt(c.u), fmt(c.z), fmt(c.w), fmt(c.h), fmt(c.depth)].join(",")).join("~");
+// texts: "font,r|e,u,z,size,depth,text" joined by "~", with "%", "," and "~" in the text escaped (%25, %2C, %7E)
+const encodeTexts = (texts: TextMark[]) =>
+  texts.map((t) => [t.font, t.raised ? "r" : "e", fmt(t.u), fmt(t.z), fmt(t.size), fmt(t.depth), t.text.replace(/%/g, "%25").replace(/,/g, "%2C").replace(/~/g, "%7E")].join(",")).join("~");
+function decodeTexts(s: string): TextMark[] {
+  const out: TextMark[] = [];
+  for (const item of s.split("~").slice(0, 32)) {
+    const [font, relief, ...rest] = item.split(",");
+    const [u, z, size, depth] = rest.slice(0, 4).map(Number);
+    let text = "";
+    try {
+      text = decodeURIComponent(rest.slice(4).join(",")).slice(0, 200);
+    } catch {
+      continue;
+    }
+    if (!TEXT_FONTS.includes(font as TextFont) || (relief !== "r" && relief !== "e") || ![u, z, size, depth].every(Number.isFinite)) continue;
+    const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+    out.push({ text, font: font as TextFont, raised: relief === "r", u: u - Math.floor(u), z: clamp(z, 0, 1), size: clamp(size, 1, 300), depth: clamp(depth, 0, 20) });
+  }
+  return out;
+}
+
 function decodeCuts(s: string): Cut[] {
   const out: Cut[] = [];
   for (const item of s.split("~").slice(0, 64)) {
@@ -71,6 +94,8 @@ export function encodeParams(p: ShapeParams): string {
     const d = DEFAULT_PARAMS[key];
     if (key === "cuts") {
       if (p.cuts.length > 0) q.set(KEYS.cuts, encodeCuts(p.cuts));
+    } else if (key === "texts") {
+      if (p.texts.length > 0) q.set(KEYS.texts, encodeTexts(p.texts));
     } else if (Array.isArray(v)) {
       if (v.every((x, i) => x === (d as number[])[i]) && v.length === (d as number[]).length) continue;
       q.set(KEYS[key], (v as number[]).map(fmt).join(","));
@@ -148,6 +173,8 @@ export function decodeParams(search: string, base: ShapeParams = DEFAULT_PARAMS)
   p.slantAngle = num(g("slantAngle"), -360, 360) ?? p.slantAngle;
   const cuts = g("cuts");
   if (cuts !== null) p.cuts = decodeCuts(cuts);
+  const texts = g("texts");
+  if (texts !== null) p.texts = decodeTexts(texts);
   p.split = num(g("split"), 0, 1) ?? p.split;
   p.splitLip = num(g("splitLip"), 1, 100) ?? p.splitLip;
   p.splitGap = num(g("splitGap"), 0, 5) ?? p.splitGap;
